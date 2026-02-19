@@ -3,403 +3,1030 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AIOps Dashboard</title>
+  <title>AIOps Agent — Incident Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0f1117;
-      --panel: #171b24;
-      --panel-2: #1d2330;
-      --text: #e6edf3;
-      --muted: #9aa4b2;
-      --border: #2a3344;
-      --green: #22c55e;
-      --yellow: #eab308;
-      --red: #ef4444;
-      --blue: #60a5fa;
+      --bg:       #06080f;
+      --surface:  #0c0f1a;
+      --surface2: #111520;
+      --surface3: #161b2e;
+      --border:   #1e2640;
+      --border2:  #28304f;
+
+      --green:  #00e5a0;
+      --yellow: #f5c542;
+      --red:    #ff3d5a;
+      --blue:   #38b6ff;
+      --purple: #a78bfa;
+      --orange: #ff8c42;
+
+      --text:   #dce6f5;
+      --muted:  #5a6a8a;
+      --dim:    #232c42;
+
+      --font-display: 'Syne', sans-serif;
+      --font-mono:    'IBM Plex Mono', monospace;
     }
 
-    * { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
 
     body {
-      margin: 0;
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: radial-gradient(circle at top right, #1c2331, var(--bg) 45%);
+      background: var(--bg);
       color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
       min-height: 100vh;
+      overflow-x: hidden;
     }
 
-    .container {
-      width: min(1200px, 94vw);
-      margin: 24px auto;
+    /* Scanline texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Grid overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(56,182,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56,182,255,0.02) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      width: min(96vw, 1660px);
+      max-width: 1660px;
+      margin: 0 auto;
+      padding: 32px 28px 64px;
+    }
+
+    /* ─── HEADER ─── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 40px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      animation: fadeDown 0.5s ease both;
+    }
+
+    .header-left {}
+
+    .header-eyebrow {
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 8px;
+      opacity: 0.8;
+    }
+
+    .header-title {
+      font-family: var(--font-display);
+      font-size: clamp(22px, 4vw, 38px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .header-title span { color: var(--blue); }
+
+    .header-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .live-dot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .live-dot::before {
+      content: '';
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 2s ease-in-out infinite;
+    }
+
+    .header-ts {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ─── SUMMARY BAR ─── */
+    .summary-row {
       display: grid;
-      gap: 16px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+      animation: fadeUp 0.5s 0.1s ease both;
     }
 
-    .card {
-      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    @media (max-width: 600px) { .summary-row { grid-template-columns: 1fr 1fr; } }
+
+    .stat-card {
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 14px 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
     }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.4rem;
-      letter-spacing: 0.3px;
+    .stat-card:hover {
+      transform: translateY(-2px);
     }
 
-    .muted {
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: var(--stat-color, transparent);
+      opacity: 0.7;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
       color: var(--muted);
-      font-size: 0.95rem;
+      margin-bottom: 10px;
     }
 
-    .summary-grid {
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1;
+      color: var(--stat-color, var(--text));
+    }
+
+    .stat-card.total  { --stat-color: var(--blue); }
+    .stat-card.auto   { --stat-color: var(--green); }
+    .stat-card.confirm { --stat-color: var(--yellow); }
+    .stat-card.escalate { --stat-color: var(--red); }
+
+    /* Plain-language explainer */
+    .explainer-panel {
+      margin-bottom: 16px;
+      animation: fadeUp 0.5s 0.15s ease both;
+    }
+
+    .explainer-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .incident-select {
+      background: var(--surface3);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 6px 8px;
+      min-width: 280px;
+      max-width: 460px;
+    }
+
+    .explainer-body {
+      padding: 16px 20px 20px;
       display: grid;
+      gap: 12px;
+    }
+
+    .explainer-summary {
+      padding: 12px 14px;
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      background: rgba(56, 182, 255, 0.06);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .explainer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-      margin-top: 8px;
     }
 
-    .metric {
-      background: #0f1520;
+    @media (max-width: 850px) {
+      .explainer-grid { grid-template-columns: 1fr; }
+      .incident-select { min-width: 200px; max-width: 100%; }
+    }
+
+    .ex-card {
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px;
+      background: var(--surface2);
+      padding: 12px;
     }
 
-    .metric .label {
+    .ex-label {
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
       color: var(--muted);
-      font-size: 0.85rem;
+      margin-bottom: 8px;
     }
 
-    .metric .value {
-      font-size: 1.45rem;
-      font-weight: 600;
-      margin-top: 4px;
+    .ex-text {
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.5;
     }
 
-    .value.auto { color: var(--green); }
-    .value.confirm { color: var(--yellow); }
-    .value.escalate { color: var(--red); }
-
-    .split {
+    /* ─── MAIN GRID ─── */
+    .main-grid {
       display: grid;
+      grid-template-columns: 1fr 300px;
       gap: 16px;
-      grid-template-columns: 2fr 1fr;
+      animation: fadeUp 0.5s 0.2s ease both;
     }
 
-    @media (max-width: 900px) {
-      .split { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 960px) { .main-grid { grid-template-columns: 1fr; } }
 
-    .table-wrap {
-      max-height: 520px;
-      overflow: auto;
+    /* ─── PANEL ─── */
+    .panel {
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      background: #0f1520;
+      border-radius: 14px;
+      overflow: hidden;
     }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    .panel-title {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-title-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 8px var(--blue);
+    }
+
+    .panel-count {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    /* ─── TABLE ─── */
+    .table-scroll {
+      max-height: 560px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border2) transparent;
+    }
+
+    .table-scroll::-webkit-scrollbar { width: 4px; }
+    .table-scroll::-webkit-scrollbar-track { background: transparent; }
+    .table-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.92rem;
+      font-size: 12px;
     }
 
     thead th {
       position: sticky;
       top: 0;
-      background: #111827;
-      color: #c8d1dc;
+      background: var(--surface3);
+      color: var(--muted);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 12px 14px;
       text-align: left;
-      padding: 10px;
       border-bottom: 1px solid var(--border);
       white-space: nowrap;
+      font-weight: 500;
     }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr.incident-row { cursor: pointer; }
+    tbody tr.incident-row.active {
+      background: rgba(56, 182, 255, 0.08);
+      box-shadow: inset 2px 0 0 var(--blue);
+    }
+    tbody tr:last-child { border-bottom: none; }
 
     tbody td {
-      padding: 9px 10px;
-      border-bottom: 1px solid #1f2937;
-      vertical-align: top;
+      padding: 11px 14px;
+      vertical-align: middle;
+      color: var(--text);
     }
 
-    tbody tr:hover {
-      background: #161f2e;
+    td.mono { font-family: var(--font-mono); }
+    td.muted { color: var(--muted); }
+
+    .score-cell {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
     }
 
+    .score-high { color: var(--red); }
+    .score-mid  { color: var(--yellow); }
+    .score-low  { color: var(--green); }
+
+    /* ─── BADGES ─── */
     .badge {
-      display: inline-block;
-      padding: 3px 9px;
-      border-radius: 999px;
-      font-weight: 700;
-      font-size: 0.75rem;
-      letter-spacing: 0.3px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 5px;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      font-family: var(--font-mono);
     }
 
-    .badge.AUTO { background: rgba(34, 197, 94, 0.18); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.38); }
-    .badge.CONFIRM { background: rgba(234, 179, 8, 0.18); color: var(--yellow); border: 1px solid rgba(234, 179, 8, 0.38); }
-    .badge.ESCALATE { background: rgba(239, 68, 68, 0.18); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.38); }
-
-    .kv {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      padding: 8px 0;
-      border-bottom: 1px solid #283245;
+    .badge::before {
+      content: '';
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: currentColor;
     }
 
-    .kv:last-child { border-bottom: none; }
-    .kv .k { color: var(--muted); }
-    .kv .v { font-weight: 600; color: var(--text); }
+    .badge.AUTO     { background: rgba(0,229,160,0.1);  color: var(--green);  border: 1px solid rgba(0,229,160,0.25); }
+    .badge.CONFIRM  { background: rgba(245,197,66,0.1);  color: var(--yellow); border: 1px solid rgba(245,197,66,0.25); }
+    .badge.ESCALATE { background: rgba(255,61,90,0.1);   color: var(--red);    border: 1px solid rgba(255,61,90,0.25); }
 
-    .chips {
+    .exec-true  { color: var(--green); }
+    .exec-false { color: var(--muted); }
+
+    /* ─── SIDEBAR ─── */
+    .sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+    /* Drift panel */
+    .drift-panel {
+      padding: 20px;
+    }
+
+    .drift-row {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
       display: flex;
-      gap: 6px;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .drift-row:last-of-type { border-bottom: none; }
+
+    .drift-key {
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .drift-val {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .drift-bar-track {
+      height: 3px;
+      background: var(--dim);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .drift-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .drift-chips {
+      display: flex;
       flex-wrap: wrap;
-      margin-top: 6px;
+      gap: 5px;
+      margin-top: 10px;
     }
 
     .chip {
-      border: 1px solid var(--border);
-      background: #111827;
-      border-radius: 999px;
+      font-size: 9px;
       padding: 3px 8px;
-      font-size: 0.78rem;
-      color: #c6cfda;
+      border-radius: 4px;
+      background: var(--surface3);
+      border: 1px solid var(--border2);
+      color: var(--muted);
+      letter-spacing: 0.04em;
     }
 
-    .status {
-      margin-top: 8px;
+    /* Status log */
+    .status-panel { padding: 16px 20px; }
+
+    .log-line {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.6;
+      padding: 4px 0;
+      display: flex;
+      gap: 8px;
+    }
+
+    .log-line::before {
+      content: '›';
       color: var(--blue);
-      font-size: 0.9rem;
+      opacity: 0.5;
+      flex-shrink: 0;
     }
 
-    .error {
-      color: #fda4af;
-      font-size: 0.9rem;
-      margin-top: 8px;
+    .log-ok    { color: var(--green); }
+    .log-warn  { color: var(--yellow); }
+    .log-error { color: var(--red); }
+
+    /* ─── ANIMATIONS ─── */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-12px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── EMPTY / ERROR STATES ─── */
+    .empty-row td {
+      text-align: center;
+      color: var(--muted);
+      padding: 40px;
+      font-style: italic;
+    }
+
+    /* ─── FOOTER ─── */
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      animation: fadeUp 0.5s 0.4s ease both;
+    }
+
+    .footer-left { display: flex; gap: 20px; }
+    .footer a { color: var(--blue); text-decoration: none; opacity: 0.7; }
+    .footer a:hover { opacity: 1; }
   </style>
 </head>
 <body>
-  <main class="container">
-    <section class="card">
-      <h1>AIOps Incident Dashboard</h1>
-      <div class="muted">Reads timeline and drift reports from <code>../reports/</code>.</div>
-      <div class="summary-grid" id="summary"></div>
-      <div class="status" id="status"></div>
-      <div class="error" id="error"></div>
-    </section>
+<div class="page">
 
-    <section class="split">
-      <article class="card">
-        <h2 style="margin:0 0 10px; font-size:1.1rem;">Incident Timeline</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Service</th>
-                <th>Anomaly</th>
-                <th>Z-Score</th>
-                <th>Decision</th>
-                <th>Action</th>
-                <th>Executed</th>
-                <th>Drift Share</th>
-              </tr>
-            </thead>
-            <tbody id="timeline-body"></tbody>
-          </table>
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <div class="header-eyebrow">// autonomous incident response</div>
+      <h1 class="header-title">AIOps <span>Agent</span></h1>
+    </div>
+    <div class="header-right">
+      <div class="live-dot">Monitoring Active</div>
+      <div class="header-ts" id="header-ts">—</div>
+    </div>
+  </header>
+
+  <!-- SUMMARY STATS -->
+  <div class="summary-row" id="summary-row">
+    <div class="stat-card total">
+      <div class="stat-label">Total Anomalies</div>
+      <div class="stat-value" id="s-total">—</div>
+    </div>
+    <div class="stat-card auto">
+      <div class="stat-label">AUTO Resolved</div>
+      <div class="stat-value" id="s-auto">—</div>
+    </div>
+    <div class="stat-card confirm">
+      <div class="stat-label">Needs Confirm</div>
+      <div class="stat-value" id="s-confirm">—</div>
+    </div>
+    <div class="stat-card escalate">
+      <div class="stat-label">Escalated</div>
+      <div class="stat-value" id="s-escalate">—</div>
+    </div>
+  </div>
+
+  <!-- PLAIN-LANGUAGE INCIDENT EXPLAINER -->
+  <div class="panel explainer-panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-title-dot" style="background:var(--purple);box-shadow:0 0 8px var(--purple)"></div>
+        Incident Explainer (Easy Words)
+      </div>
+      <div class="explainer-controls">
+        <label for="incident-selector">Incident</label>
+        <select id="incident-selector" class="incident-select"></select>
+      </div>
+    </div>
+    <div class="explainer-body">
+      <div class="explainer-summary" id="explainer-summary">
+        Loading incident explanation...
+      </div>
+      <div class="explainer-grid">
+        <div class="ex-card">
+          <div class="ex-label">What Happened</div>
+          <div class="ex-text" id="ex-what">-</div>
         </div>
-      </article>
+        <div class="ex-card">
+          <div class="ex-label">Why The Agent Decided This</div>
+          <div class="ex-text" id="ex-why">-</div>
+        </div>
+        <div class="ex-card">
+          <div class="ex-label">What The Action Means</div>
+          <div class="ex-text" id="ex-action">-</div>
+        </div>
+        <div class="ex-card">
+          <div class="ex-label">What A Person Should Do Next</div>
+          <div class="ex-text" id="ex-next">-</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-      <aside class="card">
-        <h2 style="margin:0 0 10px; font-size:1.1rem;">Drift Status</h2>
-        <div class="kv"><div class="k">drift_share</div><div class="v" id="drift-share">-</div></div>
-        <div class="kv"><div class="k">share_missing</div><div class="v" id="share-missing">-</div></div>
-        <div class="kv"><div class="k">drifted_columns</div><div class="v" id="drifted-count">-</div></div>
-        <div class="chips" id="drifted-columns"></div>
-      </aside>
-    </section>
-  </main>
+  <!-- MAIN CONTENT -->
+  <div class="main-grid">
 
-  <script>
-    const TIMELINE_URL = "../reports/timeline.json";
-    const DRIFT_URL = "../reports/drift_report.json";
+    <!-- INCIDENT TABLE -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-title-dot"></div>
+          Incident Timeline
+        </div>
+        <div class="panel-count" id="table-count">loading...</div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Service</th>
+              <th>Anomaly Score</th>
+              <th>Z-Score</th>
+              <th>Decision</th>
+              <th>Action</th>
+              <th>Executed</th>
+              <th>Drift Share</th>
+            </tr>
+          </thead>
+          <tbody id="timeline-body">
+            <tr class="empty-row"><td colspan="8">Loading incident data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-    function asNum(value, fallback = 0) {
-      const num = Number(value);
-      return Number.isFinite(num) ? num : fallback;
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+
+      <!-- DRIFT PANEL -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <div class="panel-title-dot" style="background:var(--orange);box-shadow:0 0 8px var(--orange)"></div>
+            Drift Monitor
+          </div>
+        </div>
+        <div class="drift-panel">
+          <div class="drift-row">
+            <div class="drift-key">Drift Share</div>
+            <div class="drift-val" id="drift-share" style="color:var(--orange)">—</div>
+            <div class="drift-bar-track">
+              <div class="drift-bar-fill" id="drift-bar" style="width:0%;background:var(--orange)"></div>
+            </div>
+          </div>
+          <div class="drift-row">
+            <div class="drift-key">Missing Data</div>
+            <div class="drift-val" id="share-missing" style="color:var(--purple)">—</div>
+            <div class="drift-bar-track">
+              <div class="drift-bar-fill" id="missing-bar" style="width:0%;background:var(--purple)"></div>
+            </div>
+          </div>
+          <div class="drift-row">
+            <div class="drift-key">Drifted Columns</div>
+            <div class="drift-val" id="drifted-count" style="color:var(--yellow)">—</div>
+            <div class="drift-chips" id="drift-chips"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATUS LOG -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <div class="panel-title-dot" style="background:var(--green);box-shadow:0 0 8px var(--green)"></div>
+            Agent Log
+          </div>
+        </div>
+        <div class="status-panel" id="agent-log">
+          <div class="log-line">Initialising agent dashboard...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-left">
+      <span>AIOps Agent Prototype</span>
+      <span>Juan Naranjo · 2025</span>
+    </div>
+    <div>
+      <a href="https://github.com/Pedriux0/aiops-agent" target="_blank">github/Pedriux0/aiops-agent</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  const TIMELINE_URL = "../reports/timeline.json";
+  const DRIFT_URL    = "../reports/drift_report.json";
+  let timelineState = [];
+  let selectedIncidentIndex = 0;
+
+  /* ── utils ── */
+  function esc(v) {
+    return String(v)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function num(v, fallback = 0) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function fmt(v, d = 3) { return num(v).toFixed(d); }
+
+  function scoreClass(v) {
+    if (v >= 0.7) return 'score-high';
+    if (v >= 0.4) return 'score-mid';
+    return 'score-low';
+  }
+
+  function log(msg, type = '') {
+    const el = document.getElementById('agent-log');
+    const line = document.createElement('div');
+    line.className = `log-line ${type ? 'log-' + type : ''}`;
+    line.textContent = msg;
+    el.appendChild(line);
+    // keep last 8 lines
+    while (el.children.length > 8) el.removeChild(el.firstChild);
+  }
+
+  function decisionText(decision) {
+    if (decision === 'AUTO') return 'The system had high confidence this was a real issue.';
+    if (decision === 'CONFIRM') return 'The system saw a possible issue, but wants human confirmation first.';
+    if (decision === 'ESCALATE') return 'The system judged this as risky/uncertain and escalated it.';
+    return 'The system could not classify this incident with standard confidence rules.';
+  }
+
+  function actionText(action) {
+    if (action === 'restart_service') return 'It attempts to restart the affected service to recover quickly.';
+    if (action === 'scale_up_service') return 'It increases service capacity to handle higher load.';
+    if (action === 'run_runbook') return 'It runs a predefined troubleshooting playbook.';
+    if (action === 'open_ticket') return 'It creates a ticket so a human can investigate.';
+    return 'It selected a custom or unknown action type.';
+  }
+
+  function driftRiskText(driftShare) {
+    const drift = num(driftShare);
+    if (drift >= 0.3) return 'Input data changed a lot, so model trust is lower.';
+    if (drift >= 0.1) return 'Input data shifted somewhat, so caution is advised.';
+    return 'Input data is stable, so model trust is higher.';
+  }
+
+  /* ── timestamp ── */
+  document.getElementById('header-ts').textContent =
+    new Date().toLocaleString('en-CA', { hour12: false });
+
+  /* ── summary ── */
+  function renderSummary(timeline) {
+    const total     = timeline.length;
+    const autoC     = timeline.filter(e => e.decision === 'AUTO').length;
+    const confirmC  = timeline.filter(e => e.decision === 'CONFIRM').length;
+    const escalateC = timeline.filter(e => e.decision === 'ESCALATE').length;
+
+    document.getElementById('s-total').textContent    = total;
+    document.getElementById('s-auto').textContent     = autoC;
+    document.getElementById('s-confirm').textContent  = confirmC;
+    document.getElementById('s-escalate').textContent = escalateC;
+  }
+
+  function incidentOptionLabel(entry, index) {
+    const ts = entry.timestamp ? String(entry.timestamp).replace('T', ' ').split('.')[0] : 'unknown time';
+    const svc = entry.service || 'unknown service';
+    const dec = entry.decision || 'UNKNOWN';
+    return `#${index + 1} | ${svc} | ${dec} | ${ts}`;
+  }
+
+  function setExplainerContent(entry) {
+    const e = entry || {};
+    const anomaly = num(e.anomaly_score);
+    const zScore = num(e.z_score);
+    const drift = num(e.drift_share);
+    const executed = !!e.executed;
+    const decision = e.decision || 'UNKNOWN';
+    const action = e.action || 'unknown_action';
+    const service = e.service || 'unknown service';
+
+    const severity = anomaly >= 0.7 ? 'high' : anomaly >= 0.4 ? 'moderate' : 'low';
+    const headline = `Incident on ${service}: ${severity} anomaly (${fmt(anomaly)}) with decision ${decision}.`;
+    const what = `The system observed unusual behavior in ${service}. The anomaly score is ${fmt(anomaly)} and the z-score is ${fmt(zScore)}.`;
+    const why = `${decisionText(decision)} ${driftRiskText(drift)} (drift share ${fmt(drift)}).`;
+    const actionMeaning = `${actionText(action)} Executed: ${executed ? 'yes' : 'no'}.`;
+
+    let next = 'Keep monitoring this service and compare with recent incidents.';
+    if (decision === 'AUTO' && executed) {
+      next = 'No immediate manual action is required. Watch for repeated alerts in the next few minutes.';
+    } else if (decision === 'AUTO' && !executed) {
+      next = 'Automation was not executed. A human should approve or run the action manually.';
+    } else if (decision === 'CONFIRM') {
+      next = 'A reviewer should validate this incident and approve or deny the suggested action.';
+    } else if (decision === 'ESCALATE') {
+      next = 'Treat as a human-owned incident. Investigate logs/metrics and decide mitigation steps.';
     }
 
-    function formatNum(value, digits = 3) {
-      return asNum(value).toFixed(digits);
+    document.getElementById('explainer-summary').textContent = headline;
+    document.getElementById('ex-what').textContent = what;
+    document.getElementById('ex-why').textContent = why;
+    document.getElementById('ex-action').textContent = actionMeaning;
+    document.getElementById('ex-next').textContent = next;
+  }
+
+  function highlightSelectedIncidentRow() {
+    const rows = document.querySelectorAll('#timeline-body tr.incident-row');
+    rows.forEach((row) => {
+      const idx = Number(row.dataset.index);
+      row.classList.toggle('active', idx === selectedIncidentIndex);
+    });
+  }
+
+  function setSelectedIncident(index) {
+    if (!Array.isArray(timelineState) || timelineState.length === 0) return;
+    selectedIncidentIndex = Math.max(0, Math.min(index, timelineState.length - 1));
+    const selector = document.getElementById('incident-selector');
+    selector.value = String(selectedIncidentIndex);
+    setExplainerContent(timelineState[selectedIncidentIndex]);
+    highlightSelectedIncidentRow();
+  }
+
+  function renderExplainer(timeline) {
+    const selector = document.getElementById('incident-selector');
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      selector.innerHTML = '<option value="0">No incidents available</option>';
+      selector.disabled = true;
+      setExplainerContent(null);
+      return;
     }
 
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
+    selector.disabled = false;
+    selector.innerHTML = timeline
+      .map((entry, idx) => `<option value="${idx}">${esc(incidentOptionLabel(entry, idx))}</option>`)
+      .join('');
+
+    selector.onchange = (event) => {
+      const idx = Number(event.target.value);
+      setSelectedIncident(idx);
+    };
+
+    setSelectedIncident(selectedIncidentIndex);
+  }
+
+  /* ── table ── */
+  function renderTable(timeline) {
+    const tbody = document.getElementById('timeline-body');
+    document.getElementById('table-count').textContent =
+      `${timeline.length} event${timeline.length !== 1 ? 's' : ''}`;
+
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="8">No incident data found in timeline.json</td></tr>`;
+      return;
     }
 
-    function renderSummary(timeline) {
-      const total = timeline.length;
-      const autoCount = timeline.filter((e) => e.decision === "AUTO").length;
-      const confirmCount = timeline.filter((e) => e.decision === "CONFIRM").length;
-      const escalateCount = timeline.filter((e) => e.decision === "ESCALATE").length;
+    tbody.innerHTML = timeline.map((e, i) => {
+      const decision = e.decision || 'UNKNOWN';
+      const badge    = ['AUTO','CONFIRM','ESCALATE'].includes(decision) ? decision : 'ESCALATE';
+      const aScore   = num(e.anomaly_score);
+      const ts       = e.timestamp ? String(e.timestamp).replace('T',' ').split('.')[0] : '—';
 
-      const summaryEl = document.getElementById("summary");
-      summaryEl.innerHTML = `
-        <div class="metric"><div class="label">Total Anomalies</div><div class="value">${total}</div></div>
-        <div class="metric"><div class="label">AUTO</div><div class="value auto">${autoCount}</div></div>
-        <div class="metric"><div class="label">CONFIRM</div><div class="value confirm">${confirmCount}</div></div>
-        <div class="metric"><div class="label">ESCALATE</div><div class="value escalate">${escalateCount}</div></div>
-      `;
-    }
+      return `<tr class="incident-row" data-index="${i}" style="animation:fadeUp 0.3s ${i * 0.03}s ease both">
+        <td class="muted">${esc(ts)}</td>
+        <td>${esc(e.service || '—')}</td>
+        <td class="score-cell ${scoreClass(aScore)}">${fmt(aScore)}</td>
+        <td class="score-cell">${fmt(e.z_score)}</td>
+        <td><span class="badge ${badge}">${esc(decision)}</span></td>
+        <td class="muted">${esc(e.action || '—')}</td>
+        <td class="${e.executed ? 'exec-true' : 'exec-false'}">${e.executed ? '✓ yes' : '✗ no'}</td>
+        <td class="muted">${fmt(e.drift_share)}</td>
+      </tr>`;
+    }).join('');
 
-    function renderTimelineTable(timeline) {
-      const body = document.getElementById("timeline-body");
-      if (!Array.isArray(timeline) || timeline.length === 0) {
-        body.innerHTML = `<tr><td colspan="8" class="muted">No timeline entries found.</td></tr>`;
-        return;
-      }
+    tbody.querySelectorAll('tr.incident-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        setSelectedIncident(Number(row.dataset.index));
+      });
+    });
+    highlightSelectedIncidentRow();
+  }
 
-      body.innerHTML = timeline.map((entry) => {
-        const decision = entry.decision || "UNKNOWN";
-        const badgeClass = ["AUTO", "CONFIRM", "ESCALATE"].includes(decision) ? decision : "ESCALATE";
-        return `
-          <tr>
-            <td>${escapeHtml(entry.timestamp || "-")}</td>
-            <td>${escapeHtml(entry.service || "-")}</td>
-            <td>${formatNum(entry.anomaly_score)}</td>
-            <td>${formatNum(entry.z_score)}</td>
-            <td><span class="badge ${badgeClass}">${escapeHtml(decision)}</span></td>
-            <td>${escapeHtml(entry.action || "-")}</td>
-            <td>${entry.executed ? "true" : "false"}</td>
-            <td>${formatNum(entry.drift_share)}</td>
-          </tr>
-        `;
-      }).join("");
-    }
+  /* ── drift panel ── */
+  function parseDrift(json) {
+    if (!json || typeof json !== 'object') return { drift_share: 0, share_missing: 0, drifted_columns: [] };
 
-    function parseDriftFromReport(reportJson) {
-      if (reportJson && typeof reportJson === "object") {
-        if ("drift_share" in reportJson || "share_missing" in reportJson || "drifted_columns" in reportJson) {
-          return {
-            drift_share: asNum(reportJson.drift_share),
-            share_missing: asNum(reportJson.share_missing),
-            drifted_columns: Array.isArray(reportJson.drifted_columns) ? reportJson.drifted_columns : [],
-          };
-        }
-      }
-
-      const metrics = Array.isArray(reportJson?.metrics) ? reportJson.metrics : [];
-      let driftShare = 0;
-      let shareMissing = 0;
-      const driftedColumns = new Set();
-      const observedColumns = new Set();
-
-      for (const metric of metrics) {
-        const metricName = String(metric?.metric_name || "");
-        const config = metric?.config || {};
-        const value = metric?.value;
-
-        if (metricName === "DriftedColumnsCount()") {
-          if (value && typeof value === "object") {
-            driftShare = asNum(value.share, driftShare);
-          } else {
-            driftShare = asNum(value, driftShare);
-          }
-        }
-
-        if (metricName === "DatasetMissingValueCount()") {
-          if (value && typeof value === "object") {
-            shareMissing = asNum(value.share, shareMissing);
-          } else {
-            shareMissing = asNum(value, shareMissing);
-          }
-        }
-
-        if (metricName.startsWith("ValueDrift(")) {
-          const column = config?.column;
-          const threshold = asNum(config?.threshold, NaN);
-          const driftValue = asNum(value, NaN);
-          const method = String(config?.method || "").toLowerCase();
-          if (column) observedColumns.add(String(column));
-          if (column && Number.isFinite(threshold) && Number.isFinite(driftValue)) {
-            const isPValue = method.includes("p_value") || method.includes("p-value") || method.includes("ks");
-            const isDrift = isPValue ? driftValue < threshold : driftValue > threshold;
-            if (isDrift) driftedColumns.add(String(column));
-          }
-        }
-      }
-
-      if (driftShare === 0 && driftedColumns.size > 0) {
-        driftShare = driftedColumns.size / Math.max(observedColumns.size, 1);
-      }
-
+    // flat format (our custom JSON)
+    if ('drift_share' in json) {
       return {
-        drift_share: driftShare,
-        share_missing: shareMissing,
-        drifted_columns: Array.from(driftedColumns),
+        drift_share: num(json.drift_share),
+        share_missing: num(json.share_missing),
+        drifted_columns: Array.isArray(json.drifted_columns) ? json.drifted_columns : [],
       };
     }
 
-    function renderDriftPanel(drift) {
-      const driftShare = asNum(drift?.drift_share, 0);
-      const shareMissing = asNum(drift?.share_missing, 0);
-      const driftedColumns = Array.isArray(drift?.drifted_columns) ? drift.drifted_columns : [];
+    // Evidently full report format
+    const metrics = Array.isArray(json.metrics) ? json.metrics : [];
+    let driftShare = 0, shareMissing = 0;
+    const drifted = new Set(), observed = new Set();
 
-      document.getElementById("drift-share").textContent = driftShare.toFixed(3);
-      document.getElementById("share-missing").textContent = shareMissing.toFixed(3);
-      document.getElementById("drifted-count").textContent = String(driftedColumns.length);
+    for (const m of metrics) {
+      const name = String(m?.metric_name || '');
+      const val  = m?.value;
+      const cfg  = m?.config || {};
 
-      const chips = document.getElementById("drifted-columns");
-      chips.innerHTML = driftedColumns.length
-        ? driftedColumns.map((col) => `<span class="chip">${escapeHtml(col)}</span>`).join("")
-        : `<span class="chip">none</span>`;
-    }
-
-    async function fetchJson(url) {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
-      return response.json();
-    }
-
-    async function init() {
-      const statusEl = document.getElementById("status");
-      const errorEl = document.getElementById("error");
-      statusEl.textContent = "Loading reports...";
-      errorEl.textContent = "";
-
-      let timeline = [];
-      try {
-        const timelineJson = await fetchJson(TIMELINE_URL);
-        timeline = Array.isArray(timelineJson) ? timelineJson : [];
-      } catch (error) {
-        errorEl.textContent = `Timeline load error: ${error.message}`;
+      if (name === 'DriftedColumnsCount()') {
+        driftShare = num(val?.share ?? val, driftShare);
       }
-
-      let drift = { drift_share: 0, share_missing: 0, drifted_columns: [] };
-      try {
-        const driftJson = await fetchJson(DRIFT_URL);
-        drift = parseDriftFromReport(driftJson);
-      } catch (error) {
-        errorEl.textContent = errorEl.textContent
-          ? `${errorEl.textContent} | Drift load error: ${error.message}`
-          : `Drift load error: ${error.message}`;
+      if (name === 'DatasetMissingValueCount()') {
+        shareMissing = num(val?.share ?? val, shareMissing);
       }
-
-      renderSummary(timeline);
-      renderTimelineTable(timeline);
-      renderDriftPanel(drift);
-      statusEl.textContent = `Loaded ${timeline.length} timeline entries.`;
+      if (name.startsWith('ValueDrift(')) {
+        const col = cfg.column;
+        if (col) {
+          observed.add(String(col));
+          const method = String(cfg.method || '').toLowerCase();
+          const isPVal = method.includes('ks') || method.includes('p_value');
+          const threshold = num(cfg.threshold, NaN);
+          const driftVal  = num(val, NaN);
+          if (Number.isFinite(threshold) && Number.isFinite(driftVal)) {
+            if ((isPVal && driftVal < threshold) || (!isPVal && driftVal > threshold)) {
+              drifted.add(String(col));
+            }
+          }
+        }
+      }
     }
 
-    init();
-  </script>
+    if (driftShare === 0 && drifted.size > 0) {
+      driftShare = drifted.size / Math.max(observed.size, 1);
+    }
+
+    return { drift_share: driftShare, share_missing: shareMissing, drifted_columns: Array.from(drifted) };
+  }
+
+  function renderDrift(raw) {
+    const d = parseDrift(raw);
+    const pct = v => Math.min(Math.round(v * 100), 100);
+
+    document.getElementById('drift-share').textContent  = pct(d.drift_share) + '%';
+    document.getElementById('share-missing').textContent = pct(d.share_missing) + '%';
+    document.getElementById('drifted-count').textContent = d.drifted_columns.length;
+
+    document.getElementById('drift-bar').style.width    = pct(d.drift_share) + '%';
+    document.getElementById('missing-bar').style.width  = pct(d.share_missing) + '%';
+
+    // colour drift bar by severity
+    const bar = document.getElementById('drift-bar');
+    bar.style.background = d.drift_share > 0.3 ? 'var(--red)' : d.drift_share > 0.1 ? 'var(--yellow)' : 'var(--green)';
+
+    const chips = document.getElementById('drift-chips');
+    chips.innerHTML = d.drifted_columns.length
+      ? d.drifted_columns.map(c => `<span class="chip">${esc(c)}</span>`).join('')
+      : `<span class="chip">no drift detected</span>`;
+  }
+
+  /* ── fetch ── */
+  async function fetchJson(url) {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} — ${url}`);
+    return r.json();
+  }
+
+  /* ── init ── */
+  async function init() {
+    log('Loading timeline.json...');
+
+    let timeline = [];
+    try {
+      const raw = await fetchJson(TIMELINE_URL);
+      timeline = Array.isArray(raw) ? raw : [];
+      log(`Loaded ${timeline.length} incident events.`, 'ok');
+    } catch (err) {
+      log(`Timeline error: ${err.message}`, 'error');
+    }
+
+    log('Loading drift_report.json...');
+    let driftRaw = null;
+    try {
+      driftRaw = await fetchJson(DRIFT_URL);
+      log('Drift report loaded.', 'ok');
+    } catch (err) {
+      log(`Drift error: ${err.message}`, 'warn');
+    }
+
+    timelineState = timeline;
+    selectedIncidentIndex = Math.max(0, timeline.length - 1);
+
+    renderSummary(timeline);
+    renderTable(timeline);
+    renderExplainer(timeline);
+    renderDrift(driftRaw);
+
+    const decisions = [...new Set(timeline.map(e => e.decision))];
+    log(`Decisions seen: ${decisions.join(', ') || 'none'}`, decisions.includes('ESCALATE') ? 'warn' : 'ok');
+    log('Dashboard ready.');
+  }
+
+  init();
+</script>
 </body>
 </html>
