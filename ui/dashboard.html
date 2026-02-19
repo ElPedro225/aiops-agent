@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AIOps Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --panel-2: #1d2330;
+      --text: #e6edf3;
+      --muted: #9aa4b2;
+      --border: #2a3344;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --blue: #60a5fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at top right, #1c2331, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      width: min(1200px, 94vw);
+      margin: 24px auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.4rem;
+      letter-spacing: 0.3px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .summary-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      margin-top: 8px;
+    }
+
+    .metric {
+      background: #0f1520;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .metric .value {
+      font-size: 1.45rem;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .value.auto { color: var(--green); }
+    .value.confirm { color: var(--yellow); }
+    .value.escalate { color: var(--red); }
+
+    .split {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 2fr 1fr;
+    }
+
+    @media (max-width: 900px) {
+      .split { grid-template-columns: 1fr; }
+    }
+
+    .table-wrap {
+      max-height: 520px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0f1520;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #111827;
+      color: #c8d1dc;
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #1f2937;
+      vertical-align: top;
+    }
+
+    tbody tr:hover {
+      background: #161f2e;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.3px;
+    }
+
+    .badge.AUTO { background: rgba(34, 197, 94, 0.18); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.38); }
+    .badge.CONFIRM { background: rgba(234, 179, 8, 0.18); color: var(--yellow); border: 1px solid rgba(234, 179, 8, 0.38); }
+    .badge.ESCALATE { background: rgba(239, 68, 68, 0.18); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.38); }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid #283245;
+    }
+
+    .kv:last-child { border-bottom: none; }
+    .kv .k { color: var(--muted); }
+    .kv .v { font-weight: 600; color: var(--text); }
+
+    .chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+
+    .chip {
+      border: 1px solid var(--border);
+      background: #111827;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 0.78rem;
+      color: #c6cfda;
+    }
+
+    .status {
+      margin-top: 8px;
+      color: var(--blue);
+      font-size: 0.9rem;
+    }
+
+    .error {
+      color: #fda4af;
+      font-size: 0.9rem;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <h1>AIOps Incident Dashboard</h1>
+      <div class="muted">Reads timeline and drift reports from <code>../reports/</code>.</div>
+      <div class="summary-grid" id="summary"></div>
+      <div class="status" id="status"></div>
+      <div class="error" id="error"></div>
+    </section>
+
+    <section class="split">
+      <article class="card">
+        <h2 style="margin:0 0 10px; font-size:1.1rem;">Incident Timeline</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Service</th>
+                <th>Anomaly</th>
+                <th>Z-Score</th>
+                <th>Decision</th>
+                <th>Action</th>
+                <th>Executed</th>
+                <th>Drift Share</th>
+              </tr>
+            </thead>
+            <tbody id="timeline-body"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <aside class="card">
+        <h2 style="margin:0 0 10px; font-size:1.1rem;">Drift Status</h2>
+        <div class="kv"><div class="k">drift_share</div><div class="v" id="drift-share">-</div></div>
+        <div class="kv"><div class="k">share_missing</div><div class="v" id="share-missing">-</div></div>
+        <div class="kv"><div class="k">drifted_columns</div><div class="v" id="drifted-count">-</div></div>
+        <div class="chips" id="drifted-columns"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const TIMELINE_URL = "../reports/timeline.json";
+    const DRIFT_URL = "../reports/drift_report.json";
+
+    function asNum(value, fallback = 0) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : fallback;
+    }
+
+    function formatNum(value, digits = 3) {
+      return asNum(value).toFixed(digits);
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function renderSummary(timeline) {
+      const total = timeline.length;
+      const autoCount = timeline.filter((e) => e.decision === "AUTO").length;
+      const confirmCount = timeline.filter((e) => e.decision === "CONFIRM").length;
+      const escalateCount = timeline.filter((e) => e.decision === "ESCALATE").length;
+
+      const summaryEl = document.getElementById("summary");
+      summaryEl.innerHTML = `
+        <div class="metric"><div class="label">Total Anomalies</div><div class="value">${total}</div></div>
+        <div class="metric"><div class="label">AUTO</div><div class="value auto">${autoCount}</div></div>
+        <div class="metric"><div class="label">CONFIRM</div><div class="value confirm">${confirmCount}</div></div>
+        <div class="metric"><div class="label">ESCALATE</div><div class="value escalate">${escalateCount}</div></div>
+      `;
+    }
+
+    function renderTimelineTable(timeline) {
+      const body = document.getElementById("timeline-body");
+      if (!Array.isArray(timeline) || timeline.length === 0) {
+        body.innerHTML = `<tr><td colspan="8" class="muted">No timeline entries found.</td></tr>`;
+        return;
+      }
+
+      body.innerHTML = timeline.map((entry) => {
+        const decision = entry.decision || "UNKNOWN";
+        const badgeClass = ["AUTO", "CONFIRM", "ESCALATE"].includes(decision) ? decision : "ESCALATE";
+        return `
+          <tr>
+            <td>${escapeHtml(entry.timestamp || "-")}</td>
+            <td>${escapeHtml(entry.service || "-")}</td>
+            <td>${formatNum(entry.anomaly_score)}</td>
+            <td>${formatNum(entry.z_score)}</td>
+            <td><span class="badge ${badgeClass}">${escapeHtml(decision)}</span></td>
+            <td>${escapeHtml(entry.action || "-")}</td>
+            <td>${entry.executed ? "true" : "false"}</td>
+            <td>${formatNum(entry.drift_share)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function parseDriftFromReport(reportJson) {
+      if (reportJson && typeof reportJson === "object") {
+        if ("drift_share" in reportJson || "share_missing" in reportJson || "drifted_columns" in reportJson) {
+          return {
+            drift_share: asNum(reportJson.drift_share),
+            share_missing: asNum(reportJson.share_missing),
+            drifted_columns: Array.isArray(reportJson.drifted_columns) ? reportJson.drifted_columns : [],
+          };
+        }
+      }
+
+      const metrics = Array.isArray(reportJson?.metrics) ? reportJson.metrics : [];
+      let driftShare = 0;
+      let shareMissing = 0;
+      const driftedColumns = new Set();
+      const observedColumns = new Set();
+
+      for (const metric of metrics) {
+        const metricName = String(metric?.metric_name || "");
+        const config = metric?.config || {};
+        const value = metric?.value;
+
+        if (metricName === "DriftedColumnsCount()") {
+          if (value && typeof value === "object") {
+            driftShare = asNum(value.share, driftShare);
+          } else {
+            driftShare = asNum(value, driftShare);
+          }
+        }
+
+        if (metricName === "DatasetMissingValueCount()") {
+          if (value && typeof value === "object") {
+            shareMissing = asNum(value.share, shareMissing);
+          } else {
+            shareMissing = asNum(value, shareMissing);
+          }
+        }
+
+        if (metricName.startsWith("ValueDrift(")) {
+          const column = config?.column;
+          const threshold = asNum(config?.threshold, NaN);
+          const driftValue = asNum(value, NaN);
+          const method = String(config?.method || "").toLowerCase();
+          if (column) observedColumns.add(String(column));
+          if (column && Number.isFinite(threshold) && Number.isFinite(driftValue)) {
+            const isPValue = method.includes("p_value") || method.includes("p-value") || method.includes("ks");
+            const isDrift = isPValue ? driftValue < threshold : driftValue > threshold;
+            if (isDrift) driftedColumns.add(String(column));
+          }
+        }
+      }
+
+      if (driftShare === 0 && driftedColumns.size > 0) {
+        driftShare = driftedColumns.size / Math.max(observedColumns.size, 1);
+      }
+
+      return {
+        drift_share: driftShare,
+        share_missing: shareMissing,
+        drifted_columns: Array.from(driftedColumns),
+      };
+    }
+
+    function renderDriftPanel(drift) {
+      const driftShare = asNum(drift?.drift_share, 0);
+      const shareMissing = asNum(drift?.share_missing, 0);
+      const driftedColumns = Array.isArray(drift?.drifted_columns) ? drift.drifted_columns : [];
+
+      document.getElementById("drift-share").textContent = driftShare.toFixed(3);
+      document.getElementById("share-missing").textContent = shareMissing.toFixed(3);
+      document.getElementById("drifted-count").textContent = String(driftedColumns.length);
+
+      const chips = document.getElementById("drifted-columns");
+      chips.innerHTML = driftedColumns.length
+        ? driftedColumns.map((col) => `<span class="chip">${escapeHtml(col)}</span>`).join("")
+        : `<span class="chip">none</span>`;
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
+      return response.json();
+    }
+
+    async function init() {
+      const statusEl = document.getElementById("status");
+      const errorEl = document.getElementById("error");
+      statusEl.textContent = "Loading reports...";
+      errorEl.textContent = "";
+
+      let timeline = [];
+      try {
+        const timelineJson = await fetchJson(TIMELINE_URL);
+        timeline = Array.isArray(timelineJson) ? timelineJson : [];
+      } catch (error) {
+        errorEl.textContent = `Timeline load error: ${error.message}`;
+      }
+
+      let drift = { drift_share: 0, share_missing: 0, drifted_columns: [] };
+      try {
+        const driftJson = await fetchJson(DRIFT_URL);
+        drift = parseDriftFromReport(driftJson);
+      } catch (error) {
+        errorEl.textContent = errorEl.textContent
+          ? `${errorEl.textContent} | Drift load error: ${error.message}`
+          : `Drift load error: ${error.message}`;
+      }
+
+      renderSummary(timeline);
+      renderTimelineTable(timeline);
+      renderDriftPanel(drift);
+      statusEl.textContent = `Loaded ${timeline.length} timeline entries.`;
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,34 +1,139 @@
-"""
-actions/remediation.py
-========================
-Phase 5 — Remediation Action Stubs + Human Approval CLI
+"""Remediation action stubs and human-approval execution flow."""
 
-Auto-actions (stubbed — replace with real API calls in production):
-  - restart_service(service_name)
-  - scale_up_replica(service_name, replicas)
-  - run_runbook(runbook_id)
-  - annotate_incident(message)
-  - suppress_alert(alert_id)
+from __future__ import annotations
 
-Human-in-the-loop:
-  - approve_action(proposed_action) → CLI prompt for confirmation
-  - open_ticket(details)            → stub (Jira/PagerDuty in prod)
-  - trigger_retrain()               → calls detector.fit() with new data
-"""
+import os
+import sys
+from typing import Any
 
-# TODO (Phase 5): Implement action stubs
-#
-# def restart_service(service_name: str):
-#     print(f"[ACTION] 🔄 Restarting service: {service_name}")
-#     # Production: kubectl rollout restart deployment/{service_name}
-#
-# def scale_up_replica(service_name: str, replicas: int = 2):
-#     print(f"[ACTION] 📈 Scaling {service_name} to {replicas} replicas")
-#     # Production: kubectl scale deployment/{service_name} --replicas={replicas}
-#
-# def approve_action(proposed: dict) -> bool:
-#     """CLI human approval gate."""
-#     print(f"\n⚠️  Agent proposes: {proposed['action']}")
-#     print(f"   Reason: {proposed['reasoning']}")
-#     response = input("   Approve? [y/N]: ").strip().lower()
-#     return response == "y"
+
+def _parse_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def restart_service(service_name: str) -> str:
+    """Stub service restart action."""
+    result = f"[ACTION] restart_service service={service_name}"
+    print(result)
+    return result
+
+
+def scale_up_service(service_name: str, factor: int = 1) -> str:
+    """Stub service scale-up action."""
+    factor = max(int(factor), 1)
+    result = f"[ACTION] scale_up_service service={service_name} factor={factor}"
+    print(result)
+    return result
+
+
+def run_runbook(action_id: str, params: dict[str, Any]) -> str:
+    """Stub runbook execution action."""
+    result = f"[ACTION] run_runbook action_id={action_id} params={params}"
+    print(result)
+    return result
+
+
+def open_ticket(summary: str, evidence: dict[str, Any]) -> str:
+    """Stub incident ticket creation action."""
+    evidence_keys = sorted(list(evidence.keys()))
+    result = f"[ACTION] open_ticket summary={summary} evidence_keys={evidence_keys}"
+    print(result)
+    return result
+
+
+def prompt_user_for_confirmation(prompt: str) -> bool:
+    """Ask the operator for y/n confirmation via CLI."""
+    while True:
+        try:
+            response = input(f"{prompt} [y/n]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("Confirmation unavailable. Defaulting to 'no'.")
+            return False
+
+        if response in {"y", "yes"}:
+            return True
+        if response in {"n", "no"}:
+            return False
+        print("Please respond with 'y' or 'n'.")
+
+
+def _dispatch_action(action: str, service_name: str, details: dict[str, Any]) -> str:
+    if action == "restart_service":
+        return restart_service(service_name)
+    if action == "scale_up_service":
+        factor = int(details.get("factor", 1))
+        return scale_up_service(service_name, factor=factor)
+    if action == "run_runbook":
+        action_id = str(details.get("action_id", "generic-runbook"))
+        params = details.get("params", {})
+        if not isinstance(params, dict):
+            params = {"value": params}
+        return run_runbook(action_id=action_id, params=params)
+    if action == "open_ticket":
+        summary = str(details.get("summary", f"Ticket for service {service_name}"))
+        evidence = details.get("evidence", details)
+        if not isinstance(evidence, dict):
+            evidence = {"evidence": evidence}
+        return open_ticket(summary=summary, evidence=evidence)
+    raise ValueError(f"Unknown action: {action}")
+
+
+def execute_action(
+    action: str,
+    service_name: str,
+    details: dict[str, Any] | None,
+    auto_allowed: bool,
+    human_required: bool,
+) -> dict[str, Any]:
+    """Execute action based on environment and approval constraints."""
+    detail_data = details or {}
+    env_auto = _parse_bool(os.getenv("ENABLE_AUTO_ACTIONS"), default=False)
+    env_human_required = _parse_bool(os.getenv("HUMAN_APPROVAL_REQUIRED"), default=True)
+    effective_auto = bool(env_auto and auto_allowed)
+    effective_human_required = bool(env_human_required or human_required)
+    needs_confirmation = (not effective_auto) or effective_human_required
+
+    interactive = bool(
+        sys.stdin is not None
+        and sys.stdout is not None
+        and sys.stderr is not None
+        and sys.stdin.isatty()
+        and sys.stdout.isatty()
+        and sys.stderr.isatty()
+    )
+
+    if needs_confirmation:
+        if interactive:
+            prompt = (
+                f"Execute action={action} for service={service_name} "
+                f"with details={detail_data}?"
+            )
+            approved = prompt_user_for_confirmation(prompt)
+            if not approved:
+                return {
+                    "executed": False,
+                    "result": "[ACTION] action not approved by operator",
+                    "action": action,
+                }
+        else:
+            ticket_result = open_ticket(
+                summary=f"Non-interactive escalation for action {action}",
+                evidence={"service_name": service_name, "details": detail_data},
+            )
+            return {
+                "executed": False,
+                "result": f"Escalated without remediation execution: {ticket_result}",
+                "action": action,
+            }
+
+    try:
+        action_result = _dispatch_action(action, service_name, detail_data)
+        return {"executed": True, "result": action_result, "action": action}
+    except Exception as exc:
+        return {
+            "executed": False,
+            "result": f"[ACTION] execution failed for {action}: {exc}",
+            "action": action,
+        }
