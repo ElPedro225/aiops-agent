@@ -1,4 +1,9 @@
-"""Synthetic telemetry generator for the AIOps agent."""
+"""
+File: data_ingestion/simulator.py
+Purpose: Generate synthetic microservice telemetry windows for baseline and live simulation.
+Layer: Data Ingestion layer in the AIOps architecture.
+Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
+"""
 
 from __future__ import annotations
 
@@ -42,6 +47,7 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
 
 
 def _clip_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    # Intent: hard bounds keep synthetic values physically plausible and prevent downstream model instability.
     clipped = df.copy()
     clipped["cpu_util"] = clipped["cpu_util"].clip(0.0, 1.0)
     clipped["memory_util"] = clipped["memory_util"].clip(0.0, 1.0)
@@ -57,6 +63,7 @@ def _get_profiles(services: list[str], seed: int) -> dict[str, dict[str, tuple[f
             profiles[service] = _BASE_PROFILES[service]
             continue
 
+        # Intent: per-service distributions better mimic production heterogeneity than one global distribution.
         rng = np.random.default_rng(seed + (idx + 1) * 17)
         profiles[service] = {
             "cpu_util": (float(rng.uniform(0.45, 0.65)), float(rng.uniform(0.05, 0.12))),
@@ -88,6 +95,7 @@ def _inject_anomalies(
 
     out = df.copy()
     row_count = len(out.index)
+    # Informative: 5% provides a realistic signal density for demos without overwhelming normal behavior.
     anomaly_count = max(1, int(row_count * 0.05))
     target_idx = rng.choice(row_count, size=anomaly_count, replace=False)
 
@@ -99,8 +107,10 @@ def _inject_anomalies(
         for metric in picked:
             _, metric_std = profile.get(metric, (0.0, 0.05))
             std = max(float(metric_std), _EPSILON)
+            # Informative: 3-5 sigma perturbations create statistically rare events that are still plausible.
             bump = float(rng.uniform(sigma_min, sigma_max) * std)
             if metric in {"request_latency_ms", "error_rate"}:
+                # Intent: latency and errors are usually the first user-visible blast radius during incidents.
                 bump *= float(rng.uniform(1.2, 1.8))
             direction = float(rng.choice([-1.0, 1.0]))
             out.at[idx, metric] = float(out.at[idx, metric]) + direction * bump
@@ -122,6 +132,7 @@ def generate_telemetry(
     if not chosen_services:
         raise ValueError("services must contain at least one service name")
 
+    # WARNING: keep seed fixed in demos to preserve reproducible detector and policy behavior across runs.
     rng = np.random.default_rng(seed)
     profiles = _get_profiles(chosen_services, seed=seed)
     end_time = pd.Timestamp.utcnow().floor("min")
@@ -138,6 +149,7 @@ def generate_telemetry(
         service_samples = int(mask.sum())
         if service_samples == 0:
             continue
+        # Intent: sampling from service-specific profile preserves distinct performance signatures per service.
         profile = profiles[service_name]
         cpu_mean, cpu_std = profile["cpu_util"]
         lat_mean, lat_std = profile["request_latency_ms"]
@@ -204,6 +216,7 @@ class TelemetrySimulator:
         spike_factor: float = 3.0,
     ) -> pd.DataFrame:
         """Inject anomaly spikes into a dataframe and return a copy."""
+        # TODO(phase-7): Replace single-metric spike injection with scenario templates — required for production-grade incident realism.
         metric_aliases = {"cpu_usage": "cpu_util", "memory_mb": "memory_util"}
         metric_name = metric_aliases.get(feature, feature)
         profiles = _get_profiles(self.services, self.seed)
@@ -243,6 +256,7 @@ def main() -> int:
         reference_path = project_root / "data" / "reference" / "metrics.csv"
         current_path = project_root / "data" / "current" / "metrics.csv"
 
+        # Intent: environment-driven generation keeps demo scenarios switchable without editing source code.
         services_env = os.getenv("SIM_SERVICES", "")
         services = [svc.strip() for svc in services_env.split(",") if svc.strip()] or DEFAULT_SERVICES
         ref_samples = _env_int("SIM_REFERENCE_SAMPLES", 500)

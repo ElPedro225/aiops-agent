@@ -1,4 +1,9 @@
-"""Two-stage anomaly detector (z-score + PyOD Isolation Forest)."""
+"""
+File: anomaly_detection/detector.py
+Purpose: Score incidents using a conservative two-stage detector (statistics + Isolation Forest).
+Layer: Anomaly Detection layer in the AIOps architecture.
+Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
+"""
 
 from __future__ import annotations
 
@@ -38,7 +43,10 @@ class TwoStageAnomalyDetector:
                 "pyod is required for TwoStageAnomalyDetector. Install dependencies with: pip install -r requirements.txt"
             ) from exc
 
+        # Intent: Isolation Forest handles non-linear outliers with low tuning burden vs One-Class SVM sensitivity.
         self.z_threshold = z_threshold
+        # Informative: contamination is the expected outlier fraction used to calibrate Isolation Forest sensitivity.
+        # Intent: 0.05 balances recall and alert noise for prototype telemetry distributions.
         self.contamination = contamination
         self.n_features = n_features
         self.random_state = random_state
@@ -59,6 +67,7 @@ class TwoStageAnomalyDetector:
             raise ValueError("reference_df is empty")
         self._validate_columns(reference_df)
 
+        # Intent: the reference window must represent stable behavior, otherwise drift is baked into the baseline.
         features = reference_df[METRIC_COLUMNS].astype(float)
         self.means = features.mean(axis=0)
         stds = features.std(axis=0, ddof=0).replace(0.0, _EPSILON).fillna(_EPSILON)
@@ -79,15 +88,19 @@ class TwoStageAnomalyDetector:
         self._validate_columns(current_df)
 
         features = current_df[METRIC_COLUMNS].astype(float)
+        # Informative: absolute z-score is distance from baseline in standard-deviation units, regardless of direction.
         z_scores = ((features - self.means) / self.stds).abs()
+        # Intent: max z across features catches single-metric failures that an average could hide.
         max_z = z_scores.max(axis=1)
         z_anomaly = z_scores.gt(self.z_threshold).any(axis=1)
+        # Informative: z=3.0 is a classic rare-event boundary under near-normal assumptions.
         normalized_z = (max_z / max(self.z_threshold, _EPSILON)).clip(lower=0.0, upper=1.0)
 
         raw_iforest = np.asarray(self.model.decision_function(features.to_numpy()), dtype=float)
         if raw_iforest.size == 0:
             iforest_score = np.zeros(len(current_df.index), dtype=float)
         else:
+            # Intent: min-max normalization aligns model scores to [0,1] before merging with normalized z-score.
             min_score = float(raw_iforest.min())
             max_score = float(raw_iforest.max())
             if max_score - min_score <= _EPSILON:
@@ -95,6 +108,7 @@ class TwoStageAnomalyDetector:
             else:
                 iforest_score = (raw_iforest - min_score) / (max_score - min_score)
 
+        # Intent: max() is conservative and flags if either detector sees strong risk; averaging could dilute true signals.
         anomaly_score = np.maximum(normalized_z.to_numpy(dtype=float), iforest_score)
 
         result = current_df.copy()
@@ -127,6 +141,8 @@ class AnomalyDetector:
         if self._detector.model is None:
             raise RuntimeError("No model available to save. Fit the detector first.")
 
+        # WARNING: when save_model is not used, trained state remains in memory and is lost on process restart.
+        # TODO(phase-7): Add automatic model checkpoint/versioning — required for reproducible production inference.
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {

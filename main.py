@@ -1,4 +1,9 @@
-"""Main orchestrator for the v0.2+ AIOps agent prototype."""
+"""
+File: main.py
+Purpose: Orchestrate ingestion, detection, drift checks, policy decisions, and action execution end-to-end.
+Layer: Cross-layer orchestration entrypoint in the AIOps architecture.
+Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
+"""
 
 from __future__ import annotations
 
@@ -51,6 +56,7 @@ def _build_paths(project_root: Path) -> dict[str, Path]:
 
 
 def _ensure_dirs(paths: dict[str, Path]) -> None:
+    # Intent: defensive setup avoids brittle startup failures when directories are missing on fresh machines.
     paths["reference"].parent.mkdir(parents=True, exist_ok=True)
     paths["current"].parent.mkdir(parents=True, exist_ok=True)
     paths["report_dir"].mkdir(parents=True, exist_ok=True)
@@ -60,6 +66,7 @@ def _ensure_data(paths: dict[str, Path]) -> None:
     if paths["reference"].exists() and paths["current"].exists():
         return
 
+    # Intent: orchestrator self-heals missing datasets so demos remain runnable without manual pre-steps.
     services_env = os.getenv("SIM_SERVICES", "")
     services = [svc.strip() for svc in services_env.split(",") if svc.strip()] or DEFAULT_SERVICES
     ref_samples = _env_int("SIM_REFERENCE_SAMPLES", 500)
@@ -104,9 +111,11 @@ def _load_data(paths: dict[str, Path]) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def _choose_action(row: pd.Series) -> tuple[str, dict[str, Any]]:
     details: dict[str, Any] = {}
+    # Intent: high CPU+memory indicates saturation, so scale-up is safer than repeated restarts.
     if float(row["cpu_util"]) > 0.85 and float(row["memory_util"]) > 0.85:
         details["factor"] = 2
         return "scale_up_service", details
+    # Intent: high latency with moderate resource load hints dependency/network issues, so runbook is more targeted.
     if (
         float(row["request_latency_ms"]) > 220.0
         and float(row["cpu_util"]) < 0.70
@@ -155,6 +164,7 @@ def run_agent() -> int:
         scored_df["timestamp"] = pd.to_datetime(scored_df["timestamp"], errors="coerce")
 
         thresholds = load_thresholds()
+        # Intent: periodic drift checks balance trust calibration against Evidently compute overhead.
         drift_interval_minutes = _env_int("DRIFT_CHECK_INTERVAL_MINUTES", 5)
         low_threshold = float(thresholds.get("ANOMALY_LOW_THRESHOLD", 0.40))
         last_drift_check_ts: pd.Timestamp | None = None
@@ -187,6 +197,7 @@ def run_agent() -> int:
             if should_check_drift:
                 report_name = f"drift_report_{idx + 1:04d}"
                 try:
+                    # WARNING: drift checks can become expensive with large windows; interval should be tuned by scale.
                     latest_drift = run_evidently(
                         ref_df=reference_df[METRIC_COLUMNS],
                         cur_df=current_df.iloc[: idx + 1][METRIC_COLUMNS],
@@ -252,6 +263,7 @@ def run_agent() -> int:
                 share_missing=share_missing,
                 decision=decision,
             )
+            # Intent: every decision is appended, even non-executed ones, because audit trails are mandatory in AIOps.
             timeline.append(
                 {
                     "index": int(idx),
@@ -279,6 +291,7 @@ def run_agent() -> int:
             return 1
 
         timeline_json_path = paths["report_dir"] / "timeline.json"
+        # TODO(phase-7): Stream timeline events to durable storage — required for long-term analytics and compliance.
         timeline_json_payload: list[dict[str, Any]] = []
         for event in timeline:
             timeline_json_payload.append(
@@ -306,6 +319,7 @@ def run_agent() -> int:
         print("=" * 80)
         print("AIOps Agent Summary")
         print("=" * 80)
+        # Intent: this CLI summary mirrors dashboard essentials for operators working in terminal-only environments.
         print(
             f"events={len(timeline_df)} anomalies(>=ANOMALY_LOW_THRESHOLD={low_threshold})={anomaly_count}"
         )

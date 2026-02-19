@@ -1,4 +1,9 @@
-"""Remediation action stubs and human-approval execution flow."""
+"""
+File: actions/remediation.py
+Purpose: Route remediation requests through safe stubs with optional human approval gates.
+Layer: Action Execution layer in the AIOps architecture.
+Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
+"""
 
 from __future__ import annotations
 
@@ -15,6 +20,7 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
 
 def restart_service(service_name: str) -> str:
     """Stub service restart action."""
+    # TODO(phase-7): Replace stub with Kubernetes restart call — required for actual service remediation.
     result = f"[ACTION] restart_service service={service_name}"
     print(result)
     return result
@@ -22,6 +28,7 @@ def restart_service(service_name: str) -> str:
 
 def scale_up_service(service_name: str, factor: int = 1) -> str:
     """Stub service scale-up action."""
+    # TODO(phase-7): Replace stub with autoscaling API integration — required to increase real runtime capacity.
     factor = max(int(factor), 1)
     result = f"[ACTION] scale_up_service service={service_name} factor={factor}"
     print(result)
@@ -30,6 +37,7 @@ def scale_up_service(service_name: str, factor: int = 1) -> str:
 
 def run_runbook(action_id: str, params: dict[str, Any]) -> str:
     """Stub runbook execution action."""
+    # TODO(phase-7): Integrate with runbook automation platform — required for consistent operational playbooks.
     result = f"[ACTION] run_runbook action_id={action_id} params={params}"
     print(result)
     return result
@@ -37,6 +45,7 @@ def run_runbook(action_id: str, params: dict[str, Any]) -> str:
 
 def open_ticket(summary: str, evidence: dict[str, Any]) -> str:
     """Stub incident ticket creation action."""
+    # TODO(phase-7): Integrate with PagerDuty or Jira APIs — required for real incident assignment and tracking.
     evidence_keys = sorted(list(evidence.keys()))
     result = f"[ACTION] open_ticket summary={summary} evidence_keys={evidence_keys}"
     print(result)
@@ -45,6 +54,7 @@ def open_ticket(summary: str, evidence: dict[str, Any]) -> str:
 
 def prompt_user_for_confirmation(prompt: str) -> bool:
     """Ask the operator for y/n confirmation via CLI."""
+    # WARNING: input() blocks execution, so callers must guard this path in automated environments.
     while True:
         try:
             response = input(f"{prompt} [y/n]: ").strip().lower()
@@ -60,6 +70,7 @@ def prompt_user_for_confirmation(prompt: str) -> bool:
 
 
 def _dispatch_action(action: str, service_name: str, details: dict[str, Any]) -> str:
+    # Intent: dispatcher follows single-responsibility by routing execution, not deciding policy.
     if action == "restart_service":
         return restart_service(service_name)
     if action == "scale_up_service":
@@ -95,6 +106,7 @@ def execute_action(
     effective_human_required = bool(env_human_required or human_required)
     needs_confirmation = (not effective_auto) or effective_human_required
 
+    # Intent: non-interactive detection prevents CI/CD or daemon runs from hanging on stdin.
     interactive = bool(
         sys.stdin is not None
         and sys.stdout is not None
@@ -118,6 +130,7 @@ def execute_action(
                     "action": action,
                 }
         else:
+            # Intent: when no human can answer prompts, we fail safe by escalation instead of silent execution.
             ticket_result = open_ticket(
                 summary=f"Non-interactive escalation for action {action}",
                 evidence={"service_name": service_name, "details": detail_data},

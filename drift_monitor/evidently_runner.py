@@ -1,4 +1,9 @@
-"""Run Evidently drift and quality reports and extract key signals."""
+"""
+File: drift_monitor/evidently_runner.py
+Purpose: Run Evidently reports and distill drift/quality signals into policy-friendly metrics.
+Layer: Drift Monitor (ML watchdog) layer in the AIOps architecture.
+Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
+"""
 
 from __future__ import annotations
 
@@ -138,6 +143,8 @@ def _parse_v2_metrics(report_dict: dict[str, Any], current_columns: list[str]) -
 
 
 def _parse_report(report_dict: dict[str, Any], current_columns: list[str]) -> dict[str, Any]:
+    # WARNING: Evidently JSON shape changes across versions, so parsing uses tolerant fallbacks by intent.
+    # TODO(phase-7): Add schema regression tests per Evidently version — required to prevent silent parsing drift.
     v2_result = _parse_v2_metrics(report_dict, current_columns=current_columns)
     if v2_result is not None:
         return v2_result
@@ -209,6 +216,7 @@ def run_evidently(
     html_path = output_dir / f"{report_name}.html"
     json_path = output_dir / f"{report_name}.json"
 
+    # Informative: DataDriftPreset flags feature distribution shift; DataQualityPreset tracks missing/constant data issues.
     report = Report(metrics=[DataDriftPreset(), DataQualityPreset()])
     snapshot = report.run(reference_data=ref_df, current_data=cur_df)
     report_obj = snapshot if snapshot is not None else report
@@ -236,6 +244,7 @@ def run_evidently(
         report_dict = {"report": report_dict}
     json_path.write_text(json.dumps(report_dict, indent=2, default=str), encoding="utf-8")
 
+    # Intent: drift_share is the primary policy signal because it summarizes global model-validity health.
     parsed = _parse_report(report_dict, current_columns=list(cur_df.columns))
     parsed["html_path"] = str(html_path)
     parsed["json_path"] = str(json_path)

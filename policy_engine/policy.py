@@ -1,4 +1,9 @@
-"""Rule-based policy logic for anomaly and drift-aware actions."""
+"""
+File: policy_engine/policy.py
+Purpose: Convert detector and drift signals into operational decision tiers.
+Layer: Decision / Policy layer in the AIOps architecture.
+Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
+"""
 
 from __future__ import annotations
 
@@ -19,6 +24,8 @@ def _env_float(name: str, default: float) -> float:
 
 def load_thresholds() -> dict[str, float]:
     """Load policy thresholds from environment variables."""
+    # Intent: static env thresholds keep behavior deterministic for controlled demos and audits.
+    # TODO(phase-7): Replace static thresholds with adaptive policy calibration — required for changing workloads.
     return {
         "ANOMALY_HIGH_THRESHOLD": _env_float("ANOMALY_HIGH_THRESHOLD", 0.75),
         "ANOMALY_LOW_THRESHOLD": _env_float("ANOMALY_LOW_THRESHOLD", 0.40),
@@ -38,10 +45,13 @@ def decide(
     low = float(cfg.get("ANOMALY_LOW_THRESHOLD", 0.40))
     drift_tol = float(cfg.get("DRIFT_TOLERANCE", 0.30))
 
+    # Intent: AUTO is allowed only inside the model validity envelope (low drift and acceptable data quality).
     if anomaly_score >= high and drift_share < drift_tol and share_missing < 0.05:
         return AUTO
+    # Intent: CONFIRM covers medium confidence so humans can validate before taking action.
     if anomaly_score >= low:
         return CONFIRM
+    # Intent: ESCALATE is the safety default because false negatives are costlier than extra human review.
     return ESCALATE
 
 
