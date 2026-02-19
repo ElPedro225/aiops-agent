@@ -252,3 +252,5 @@ MIT — free to use, modify, and learn from.
 ---
 
 *Built with curiosity, Python, and a lot of AI collaboration. — Juan Naranjo, 2025*
+#   a i o p s - a g e n t  
+ 
