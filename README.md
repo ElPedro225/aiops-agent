@@ -1,6 +1,6 @@
 # AIOps Agent (Prototype)
 
-A Python prototype that simulates service telemetry, detects anomalies, checks data drift, and decides whether to auto-remediate, request human confirmation, or escalate.
+A Python prototype that simulates service telemetry, detects anomalies, monitors data drift, and routes incidents through confidence-based actions (`AUTO`, `CONFIRM`, `ESCALATE`).
 
 ## What This Project Does
 
@@ -17,6 +17,8 @@ Outputs include machine-readable artifacts for demos and debugging:
 - `reports/drift_report*.html`
 - `reports/drift_report*.json`
 - `reports/timeline.json`
+
+This project is intentionally safe for demos: remediation methods are stubs and do not call real infrastructure APIs.
 
 ## Architecture
 
@@ -130,6 +132,22 @@ Dashboard includes:
 - Summary bar (total anomalies and decision counts).
 - Scrollable incident table with color-coded decision badges.
 - Drift status panel (`drift_share`, `drifted_columns`, `share_missing`).
+- Incident detail panel (row click) with animated decision-flow SVG.
+- Plain-English "What happened?" summary for non-technical users.
+- Rule-based "Recommended Actions" cards with priority/category/effort tags.
+- "Confirm Action" component for pending `CONFIRM` incidents:
+  - `Approve & Execute` sets the incident to executed and updates table + summary counts.
+  - `Escalate to Human` converts `CONFIRM -> ESCALATE` and refreshes summary counts.
+  - Panel decisions persist in-session by `timestamp|service` key while the page remains open.
+
+## End-to-End Demo Flow
+
+1. Generate data (`simulator`) and run `main.py` to create `reports/timeline.json`.
+2. Start `python -m http.server` from repo root.
+3. Open `http://localhost:8000/ui/dashboard.html`.
+4. Click an incident row to inspect diagram, summary, and recommendations.
+5. For pending `CONFIRM` incidents, use the confirmation card to approve or escalate.
+6. Observe immediate UI updates to row state and summary counters.
 
 ## Timeline JSON Schema
 

@@ -38,7 +38,7 @@
       background: var(--bg);
       color: var(--text);
       font-family: var(--font-mono);
-      font-size: 13px;
+      font-size: 15px;
       min-height: 100vh;
       overflow-x: hidden;
     }
@@ -185,7 +185,7 @@
     }
 
     .stat-label {
-      font-size: 9px;
+      font-size: 11px;
       letter-spacing: 0.18em;
       text-transform: uppercase;
       color: var(--muted);
@@ -356,7 +356,7 @@
       top: 0;
       background: var(--surface3);
       color: var(--muted);
-      font-size: 9px;
+      font-size: 11px;
       letter-spacing: 0.15em;
       text-transform: uppercase;
       padding: 12px 14px;
@@ -383,6 +383,7 @@
       padding: 11px 14px;
       vertical-align: middle;
       color: var(--text);
+      font-size: 13px;
     }
 
     td.mono { font-family: var(--font-mono); }
@@ -404,7 +405,7 @@
       gap: 5px;
       padding: 4px 10px;
       border-radius: 5px;
-      font-size: 9px;
+      font-size: 11px;
       font-weight: 600;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -445,7 +446,7 @@
     .drift-row:last-of-type { border-bottom: none; }
 
     .drift-key {
-      font-size: 9px;
+      font-size: 11px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--muted);
@@ -480,7 +481,7 @@
     }
 
     .chip {
-      font-size: 9px;
+      font-size: 11px;
       padding: 3px 8px;
       border-radius: 4px;
       background: var(--surface3);
@@ -493,7 +494,7 @@
     .status-panel { padding: 16px 20px; }
 
     .log-line {
-      font-size: 11px;
+      font-size: 13px;
       color: var(--muted);
       line-height: 1.6;
       padding: 4px 0;
@@ -548,6 +549,367 @@
     .footer-left { display: flex; gap: 20px; }
     .footer a { color: var(--blue); text-decoration: none; opacity: 0.7; }
     .footer a:hover { opacity: 1; }
+
+    /* Incident detail diagram panel (additive feature) */
+    .incident-diagram-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 420px;
+      height: 100vh;
+      background: #0c0f1a;
+      border-left: 4px solid var(--blue);
+      box-shadow: -18px 0 40px rgba(0, 0, 0, 0.5);
+      z-index: 100;
+      transform: translateX(100%);
+      transition: transform 300ms ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .incident-diagram-panel.open {
+      transform: translateX(0);
+    }
+
+    .incident-diagram-panel.tier-AUTO { border-left-color: var(--green); }
+    .incident-diagram-panel.tier-CONFIRM { border-left-color: var(--yellow); }
+    .incident-diagram-panel.tier-ESCALATE { border-left-color: var(--red); }
+
+    .incident-diagram-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    .incident-diagram-title {
+      font-family: var(--font-display);
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      line-height: 1.15;
+    }
+
+    .incident-diagram-subtitle {
+      margin-top: 6px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .incident-diagram-close {
+      appearance: none;
+      border: 1px solid var(--border2);
+      background: var(--surface3);
+      color: var(--text);
+      border-radius: 8px;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      font-family: var(--font-display);
+    }
+
+    .incident-diagram-close:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+
+    .incident-diagram-scroll {
+      overflow-y: auto;
+      padding: 12px 0 18px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border2) transparent;
+    }
+
+    .incident-diagram-scroll::-webkit-scrollbar { width: 6px; }
+    .incident-diagram-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .incident-diagram-svg-wrap {
+      padding: 0 0 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .incident-diagram-summary {
+      padding: 14px 18px 6px;
+    }
+
+    .incident-diagram-summary h3 {
+      font-family: var(--font-display);
+      font-size: 15px;
+      color: var(--text);
+      margin-bottom: 8px;
+      letter-spacing: 0.02em;
+    }
+
+    .incident-diagram-summary p {
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .recommendations-section {
+      margin-top: 10px;
+      border-top: 1px solid var(--border);
+      padding: 14px 18px 14px;
+    }
+
+    .recommendations-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    .recommendations-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 8px var(--orange);
+    }
+
+    .recommendations-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .recommendation-card {
+      border-left: 4px solid var(--blue);
+      border-radius: 8px;
+      background: var(--surface2);
+      border-top: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 10px 9px;
+      opacity: 0;
+      animation: recommendationFade 260ms ease forwards;
+    }
+
+    .recommendation-card.priority-critical { border-left-color: var(--red); }
+    .recommendation-card.priority-high { border-left-color: var(--orange); }
+    .recommendation-card.priority-medium { border-left-color: var(--yellow); }
+    .recommendation-card.priority-low { border-left-color: var(--blue); }
+
+    .recommendation-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .recommendation-title {
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1.4;
+      font-family: var(--font-display);
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .recommendation-meta {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .recommendation-priority {
+      font-size: 9px;
+      border-radius: 999px;
+      padding: 2px 7px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+      border: 1px solid transparent;
+    }
+
+    .recommendation-priority.priority-critical {
+      background: rgba(255, 61, 90, 0.14);
+      color: var(--red);
+      border-color: rgba(255, 61, 90, 0.34);
+    }
+
+    .recommendation-priority.priority-high {
+      background: rgba(255, 140, 66, 0.14);
+      color: var(--orange);
+      border-color: rgba(255, 140, 66, 0.34);
+    }
+
+    .recommendation-priority.priority-medium {
+      background: rgba(245, 197, 66, 0.14);
+      color: var(--yellow);
+      border-color: rgba(245, 197, 66, 0.34);
+    }
+
+    .recommendation-priority.priority-low {
+      background: rgba(56, 182, 255, 0.14);
+      color: var(--blue);
+      border-color: rgba(56, 182, 255, 0.34);
+    }
+
+    .recommendation-pill {
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 9px;
+      letter-spacing: 0.06em;
+      text-transform: lowercase;
+      background: var(--surface3);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    .recommendation-description {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .confirm-action-section {
+      margin-top: 10px;
+      border-top: 1px solid var(--border);
+      padding: 14px 18px 14px;
+    }
+
+    .confirm-action-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    .confirm-action-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--yellow);
+      box-shadow: 0 0 8px var(--yellow);
+    }
+
+    .confirm-action-card {
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--yellow);
+      border-radius: 8px;
+      background: var(--surface2);
+      padding: 12px;
+    }
+
+    .confirm-warning {
+      color: var(--yellow);
+      font-size: 13px;
+      margin-bottom: 10px;
+      line-height: 1.45;
+    }
+
+    .confirm-terminal {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.5;
+      border: 1px solid var(--border);
+      background: var(--surface3);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text);
+      white-space: pre-line;
+      margin-bottom: 10px;
+    }
+
+    .confirm-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .confirm-btn {
+      min-height: 44px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+      border: 1px solid transparent;
+      padding: 8px 10px;
+    }
+
+    .confirm-btn.approve {
+      background: rgba(0,229,160,0.12);
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .confirm-btn.approve:hover {
+      background: var(--green);
+      color: var(--bg);
+    }
+
+    .confirm-btn.escalate {
+      background: rgba(255,61,90,0.12);
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .confirm-btn.escalate:hover {
+      background: var(--red);
+      color: var(--text);
+    }
+
+    .confirm-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .confirm-result {
+      font-size: 13px;
+      line-height: 1.5;
+      font-family: var(--font-mono);
+      padding: 8px 0 4px;
+    }
+
+    .confirm-result.approved { color: var(--green); }
+    .confirm-result.escalated { color: var(--orange); }
+
+    @keyframes recommendationFade {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .incident-node {
+      opacity: 0;
+      animation: incidentNodeFade 260ms ease forwards;
+    }
+
+    @keyframes incidentNodeFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @media (max-width: 960px) {
+      .incident-diagram-panel {
+        width: 100vw;
+        max-width: 100vw;
+        border-left-width: 4px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -723,6 +1085,10 @@
   const DRIFT_URL    = "../reports/drift_report.json";
   let timelineState = [];
   let selectedIncidentIndex = 0;
+  let incidentDiagramOpenKey = null;
+  let incidentDiagramReady = false;
+  // Session-only memory for confirmation outcomes keyed by "timestamp|service".
+  const confirmationStateStore = {};
 
   /* ── utils ── */
   function esc(v) {
@@ -774,6 +1140,542 @@
     if (drift >= 0.3) return 'Input data changed a lot, so model trust is lower.';
     if (drift >= 0.1) return 'Input data shifted somewhat, so caution is advised.';
     return 'Input data is stable, so model trust is higher.';
+  }
+
+  function incidentKey(entry) {
+    return [
+      entry?.timestamp || '',
+      entry?.service || '',
+      entry?.decision || '',
+      entry?.action || '',
+      String(num(entry?.anomaly_score)),
+      String(num(entry?.z_score)),
+      String(num(entry?.drift_share))
+    ].join('|');
+  }
+
+  function confirmationStoreKey(entry) {
+    return `${entry?.timestamp || ''}|${entry?.service || ''}`;
+  }
+
+  function formatTimestampForTable(tsValue) {
+    return tsValue ? String(tsValue).replace('T',' ').split('.')[0] : '';
+  }
+
+  function findTimelineEntryByKey(key) {
+    return timelineState.find((e) => confirmationStoreKey(e) === key) || null;
+  }
+
+  function findTableRowByIncident(entry) {
+    const targetTs = formatTimestampForTable(entry?.timestamp);
+    const targetService = String(entry?.service || '').trim();
+    const rows = document.querySelectorAll('#timeline-body tr.incident-row');
+    for (const row of rows) {
+      const ts = (row.cells[0]?.textContent || '').trim();
+      const service = (row.cells[1]?.textContent || '').trim();
+      if (ts === targetTs && service === targetService) {
+        return row;
+      }
+    }
+    return null;
+  }
+
+  function updateTableExecutedVisual(entry, executed) {
+    const row = findTableRowByIncident(entry);
+    if (!row || !row.cells[6]) return;
+    row.cells[6].textContent = executed ? '✓ yes' : '✗ no';
+    row.cells[6].classList.toggle('exec-true', !!executed);
+    row.cells[6].classList.toggle('exec-false', !executed);
+  }
+
+  function updateTableDecisionVisual(entry, decision) {
+    const row = findTableRowByIncident(entry);
+    if (!row || !row.cells[4]) return;
+    const badge = row.cells[4].querySelector('.badge');
+    if (!badge) return;
+    badge.textContent = decision;
+    badge.classList.remove('AUTO', 'CONFIRM', 'ESCALATE');
+    badge.classList.add(decision);
+  }
+
+  function colorByDecision(decision) {
+    if (decision === 'AUTO') return 'var(--green)';
+    if (decision === 'CONFIRM') return 'var(--yellow)';
+    return 'var(--red)';
+  }
+
+  function anomalyLevel(score) {
+    const s = num(score);
+    if (s >= 0.7) return { label: 'high', color: 'var(--red)' };
+    if (s >= 0.4) return { label: 'moderate', color: 'var(--yellow)' };
+    return { label: 'low', color: 'var(--green)' };
+  }
+
+  function driftLevel(share) {
+    const d = num(share);
+    if (d > 0.3) return { label: 'shifting', color: 'var(--red)' };
+    if (d > 0.1) return { label: 'shifting', color: 'var(--yellow)' };
+    return { label: 'stable', color: 'var(--green)' };
+  }
+
+  function closeIncidentDiagram() {
+    const panel = document.getElementById('incident-diagram-panel');
+    if (!panel) return;
+    panel.classList.remove('open');
+    incidentDiagramOpenKey = null;
+  }
+
+  function ensureIncidentDiagramPanel() {
+    if (incidentDiagramReady) return;
+    if (document.getElementById('incident-diagram-panel')) {
+      incidentDiagramReady = true;
+      return;
+    }
+
+    const panel = document.createElement('aside');
+    panel.id = 'incident-diagram-panel';
+    panel.className = 'incident-diagram-panel';
+    panel.innerHTML = `
+      <div class="incident-diagram-header">
+        <div>
+          <div class="incident-diagram-title">Incident Detail Diagram</div>
+          <div class="incident-diagram-subtitle" id="incident-diagram-subtitle">Select an incident row</div>
+        </div>
+        <button class="incident-diagram-close" id="incident-diagram-close" aria-label="Close panel">&times;</button>
+      </div>
+      <div class="incident-diagram-scroll">
+        <div class="incident-diagram-svg-wrap" id="incident-diagram-svg-wrap"></div>
+        <section class="incident-diagram-summary">
+          <h3>What happened?</h3>
+          <p id="incident-diagram-plain">Click an incident row to view the full decision flow.</p>
+        </section>
+        <section class="recommendations-section">
+          <div class="recommendations-header">
+            <span class="recommendations-dot"></span>
+            <span>Recommended Actions</span>
+          </div>
+          <div class="recommendations-list" id="incident-recommendations"></div>
+        </section>
+        <section class="confirm-action-section" id="confirm-action-section"></section>
+      </div>
+    `;
+    document.body.appendChild(panel);
+
+    document.getElementById('incident-diagram-close').addEventListener('click', closeIncidentDiagram);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeIncidentDiagram();
+    });
+
+    incidentDiagramReady = true;
+  }
+
+  function policyLine(decision) {
+    if (decision === 'AUTO') return 'High confidence, low drift — autonomous action taken';
+    if (decision === 'CONFIRM') return 'Moderate confidence — human approval required';
+    return 'Low confidence or high drift — escalated to human';
+  }
+
+  function actionIntent(decision) {
+    if (decision === 'AUTO') return 'auto-fix it';
+    if (decision === 'CONFIRM') return 'ask a human';
+    return 'escalate it';
+  }
+
+  function generateRecommendations(entry) {
+    const recommendations = [];
+    const anomalyScore = num(entry?.anomaly_score);
+    const zScore = num(entry?.z_score);
+    const driftShare = num(entry?.drift_share);
+    const decision = String(entry?.decision || '');
+    const executed = !!entry?.executed;
+
+    if (anomalyScore >= 0.8) {
+      recommendations.push({
+        priority: 'critical',
+        category: 'infrastructure',
+        title: 'Immediate service inspection required',
+        description: 'The anomaly score is dangerously high. Check this service immediately for memory leaks, runaway processes, or dependency failures before the issue spreads.',
+        effort: 'quick-win'
+      });
+    }
+
+    if (anomalyScore >= 0.5 && anomalyScore < 0.8) {
+      recommendations.push({
+        priority: 'high',
+        category: 'infrastructure',
+        title: 'Schedule service health check',
+        description: 'The anomaly score is elevated and should be investigated soon. A planned health check now can prevent this issue from worsening.',
+        effort: 'planned'
+      });
+    }
+
+    if (zScore > 5.0) {
+      recommendations.push({
+        priority: 'critical',
+        category: 'infrastructure',
+        title: 'Extreme statistical deviation detected',
+        description: 'This reading is more than 5 standard deviations from baseline. It is likely a real incident and not a false positive.',
+        effort: 'quick-win'
+      });
+    }
+
+    if (zScore > 3.0 && zScore <= 5.0) {
+      recommendations.push({
+        priority: 'high',
+        category: 'infrastructure',
+        title: 'Significant metric deviation',
+        description: 'The metric is outside the normal operating range. Monitor trend direction closely and investigate if the pattern continues.',
+        effort: 'planned'
+      });
+    }
+
+    if (driftShare > 0.3) {
+      recommendations.push({
+        priority: 'critical',
+        category: 'model',
+        title: 'Retrain anomaly detection model',
+        description: 'More than 30% of features have drifted from the training baseline. The model judgement is no longer reliable, so retraining on recent data is required.',
+        effort: 'planned'
+      });
+    }
+
+    if (driftShare > 0.1 && driftShare <= 0.3) {
+      recommendations.push({
+        priority: 'medium',
+        category: 'model',
+        title: 'Review model thresholds',
+        description: 'Mild drift has been detected. Recalibrate thresholds to reduce false positives and avoid missed incidents.',
+        effort: 'planned'
+      });
+    }
+
+    if (decision === 'ESCALATE') {
+      recommendations.push({
+        priority: 'high',
+        category: 'process',
+        title: 'Update runbook for this incident type',
+        description: 'This incident required human escalation. Document the resolution steps so the agent can handle similar incidents autonomously next time.',
+        effort: 'long-term'
+      });
+    }
+
+    if (decision === 'CONFIRM' && executed === false) {
+      recommendations.push({
+        priority: 'medium',
+        category: 'process',
+        title: 'Review human approval workflow',
+        description: 'The agent requested confirmation but no action was executed. Verify the approval path is working and accessible to on-call responders.',
+        effort: 'planned'
+      });
+    }
+
+    if (driftShare > 0.1) {
+      recommendations.push({
+        priority: 'medium',
+        category: 'data',
+        title: 'Audit incoming telemetry sources',
+        description: 'Feature drift can indicate metric collection changes or system behaviour shifts. Validate the data pipeline and instrumentation consistency.',
+        effort: 'planned'
+      });
+    }
+
+    recommendations.push({
+      priority: 'low',
+      category: 'process',
+      title: 'Log incident for trend analysis',
+      description: 'Track this incident with historical events to identify recurring patterns and improve future detection accuracy.',
+      effort: 'long-term'
+    });
+
+    return recommendations;
+  }
+
+  function renderRecommendations(recommendations) {
+    const container = document.getElementById('incident-recommendations');
+    if (!container) return;
+    container.innerHTML = recommendations.map((rec, idx) => `
+      <article class="recommendation-card priority-${rec.priority}" style="animation-delay:${900 + idx * 80}ms;">
+        <div class="recommendation-head">
+          <div class="recommendation-title">${esc(rec.title)}</div>
+          <div class="recommendation-meta">
+            <span class="recommendation-priority priority-${rec.priority}">${esc(rec.priority)}</span>
+            <span class="recommendation-pill">${esc(rec.category)}</span>
+            <span class="recommendation-pill">${esc(rec.effort)}</span>
+          </div>
+        </div>
+        <div class="recommendation-description">${esc(rec.description)}</div>
+      </article>
+    `).join('');
+  }
+
+  function renderConfirmActionSection(entry) {
+    const container = document.getElementById('confirm-action-section');
+    if (!container) return;
+
+    const key = confirmationStoreKey(entry);
+    const stored = confirmationStateStore[key] || null;
+    const latestEntry = findTimelineEntryByKey(key) || entry;
+
+    if (!stored && !(latestEntry?.decision === 'CONFIRM' && latestEntry?.executed === false)) {
+      container.innerHTML = '';
+      return;
+    }
+
+    const header = `
+      <div class="confirm-action-header">
+        <span class="confirm-action-dot"></span>
+        <span>Confirm Action</span>
+      </div>
+    `;
+
+    if (stored) {
+      // Re-open behavior: show the final state immediately without replaying delays/buttons.
+      const isApproved = stored.state === 'approved';
+      const finalText = isApproved
+        ? '✓ Execute signal sent. Check agent logs for confirmation.'
+        : '↑ Incident escalated. Ticket opened in queue.';
+      container.innerHTML = `
+        ${header}
+        <div class="confirm-action-card">
+          <div class="confirm-result ${isApproved ? 'approved' : 'escalated'}">${finalText}</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      ${header}
+      <div class="confirm-action-card">
+        <div class="confirm-warning">⚠ This incident is awaiting human confirmation.</div>
+        <div class="confirm-terminal">Service: ${esc(latestEntry.service || '')}
+Action: ${esc(latestEntry.action || '')}</div>
+        <div class="confirm-actions" id="confirm-actions-wrap">
+          <button class="confirm-btn approve" id="confirm-approve-btn">✓ Approve & Execute</button>
+          <button class="confirm-btn escalate" id="confirm-escalate-btn">✗ Escalate to Human</button>
+        </div>
+      </div>
+    `;
+
+    const approveBtn = document.getElementById('confirm-approve-btn');
+    const escalateBtn = document.getElementById('confirm-escalate-btn');
+    if (!approveBtn || !escalateBtn) return;
+
+    approveBtn.addEventListener('click', () => {
+      approveBtn.disabled = true;
+      escalateBtn.disabled = true;
+
+      // Approval converts CONFIRM incidents into AUTO-executed outcomes in the UI model.
+      latestEntry.executed = true;
+      latestEntry.decision = 'AUTO';
+      const stateEntry = findTimelineEntryByKey(key);
+      if (stateEntry) {
+        stateEntry.executed = true;
+        stateEntry.decision = 'AUTO';
+      }
+      updateTableExecutedVisual(latestEntry, true);
+      updateTableDecisionVisual(latestEntry, 'AUTO');
+      renderSummary(timelineState);
+      confirmationStateStore[key] = { state: 'approved' };
+      incidentDiagramOpenKey = incidentKey(latestEntry);
+      container.innerHTML = `
+        ${header}
+        <div class="confirm-action-card">
+          <div class="confirm-result approved">✓ Action approved. Sending execute signal to agent...</div>
+        </div>
+      `;
+
+      window.setTimeout(() => {
+        if (!confirmationStateStore[key] || confirmationStateStore[key].state !== 'approved') return;
+        const latest = findTimelineEntryByKey(key) || latestEntry;
+        renderConfirmActionSection(latest);
+      }, 1800);
+    });
+
+    escalateBtn.addEventListener('click', () => {
+      approveBtn.disabled = true;
+      escalateBtn.disabled = true;
+
+      // Escalation changes decision tier so table badges and summary counters stay consistent.
+      latestEntry.decision = 'ESCALATE';
+      const stateEntry = findTimelineEntryByKey(key);
+      if (stateEntry) stateEntry.decision = 'ESCALATE';
+      updateTableDecisionVisual(latestEntry, 'ESCALATE');
+      renderSummary(timelineState);
+
+      confirmationStateStore[key] = { state: 'escalated' };
+      incidentDiagramOpenKey = incidentKey(latestEntry);
+      container.innerHTML = `
+        ${header}
+        <div class="confirm-action-card">
+          <div class="confirm-result escalated">⚠ Escalating to human operator...</div>
+        </div>
+      `;
+
+      window.setTimeout(() => {
+        if (!confirmationStateStore[key] || confirmationStateStore[key].state !== 'escalated') return;
+        const latest = findTimelineEntryByKey(key) || latestEntry;
+        renderConfirmActionSection(latest);
+      }, 1800);
+    });
+  }
+
+  function buildIncidentDiagramSvg(entry) {
+    const service = entry?.service || 'unknown service';
+    const timestamp = entry?.timestamp ? String(entry.timestamp).replace('T', ' ').split('.')[0] : 'unknown time';
+    const anomaly = num(entry?.anomaly_score);
+    const z = num(entry?.z_score);
+    const drift = num(entry?.drift_share);
+    const decision = entry?.decision || 'ESCALATE';
+    const action = entry?.action || 'unknown_action';
+    const executed = !!entry?.executed;
+
+    const anomalyMeta = anomalyLevel(anomaly);
+    const zPass = z <= 3.0;
+    const zColor = zPass ? 'var(--green)' : 'var(--red)';
+    const zState = zPass ? 'Pass' : 'Fail';
+    const driftMeta = driftLevel(drift);
+    const decisionColor = colorByDecision(decision);
+    const driftPct = Math.max(0, Math.min(100, Math.round(drift * 100)));
+    const anomalyPct = Math.max(0, Math.min(100, Math.round(anomaly * 100)));
+
+    const svgW = 420;
+    const nodeX = 40;
+    const nodeW = svgW - 80;
+    const nodeH = 92;
+    const gap = 48;
+    const topY = 22;
+    const totalH = topY + (nodeH + gap) * 6 - gap + 24;
+    const centerX = svgW / 2;
+
+    const nodes = [
+      {
+        title: 'Telemetry Ingested',
+        color: 'var(--blue)',
+        body: `
+          <text x="${nodeX + 16}" y="46" fill="var(--text)" font-size="13" font-family="var(--font-display)">${esc(service)}</text>
+          <text x="${nodeX + 16}" y="64" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">${esc(timestamp)}</text>
+        `
+      },
+      {
+        title: 'Anomaly Scored',
+        color: anomalyMeta.color,
+        body: `
+          <text x="${nodeX + 16}" y="50" fill="${anomalyMeta.color}" font-size="26" font-family="var(--font-display)" font-weight="700">${fmt(anomaly)}</text>
+          <rect x="${nodeX + 16}" y="62" width="${nodeW - 32}" height="9" rx="4" fill="var(--dim)" />
+          <rect x="${nodeX + 16}" y="62" width="${((nodeW - 32) * anomalyPct) / 100}" height="9" rx="4" fill="${anomalyMeta.color}" />
+        `
+      },
+      {
+        title: 'Z-Score Check',
+        color: zColor,
+        body: `
+          <text x="${nodeX + 16}" y="48" fill="${zColor}" font-size="18" font-family="var(--font-display)" font-weight="700">${fmt(z)}</text>
+          <text x="${nodeX + 16}" y="66" fill="var(--text)" font-size="11" font-family="var(--font-mono)">Threshold 3.0: ${zState}</text>
+        `
+      },
+      {
+        title: 'Drift Monitor',
+        color: driftMeta.color,
+        body: `
+          <text x="${nodeX + 16}" y="35" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">Evidently AI</text>
+          <text x="${nodeX + 16}" y="54" fill="${driftMeta.color}" font-size="20" font-family="var(--font-display)" font-weight="700">${driftPct}%</text>
+          <rect x="${nodeX + 16}" y="62" width="${nodeW - 32}" height="8" rx="4" fill="var(--dim)" />
+          <rect x="${nodeX + 16}" y="62" width="${((nodeW - 32) * driftPct) / 100}" height="8" rx="4" fill="${driftMeta.color}" />
+        `
+      },
+      {
+        title: 'Policy Decision',
+        color: decisionColor,
+        body: `
+          <rect x="${nodeX + 16}" y="38" width="146" height="24" rx="12" fill="${decisionColor}" opacity="0.18" />
+          <text x="${nodeX + 28}" y="54" fill="${decisionColor}" font-size="12" font-family="var(--font-mono)" font-weight="700">${esc(decision)}</text>
+          <text x="${nodeX + 16}" y="74" fill="var(--text)" font-size="10.5" font-family="var(--font-mono)">${esc(policyLine(decision))}</text>
+        `
+      },
+      {
+        title: 'Action Taken',
+        color: executed ? 'var(--green)' : 'var(--red)',
+        body: `
+          <text x="${nodeX + 16}" y="49" fill="var(--text)" font-size="12" font-family="var(--font-mono)">${esc(action)}</text>
+          <text x="${nodeX + 16}" y="68" fill="${executed ? 'var(--green)' : 'var(--red)'}" font-size="16" font-family="var(--font-display)" font-weight="700">${executed ? '✓ executed' : '× not executed'}</text>
+        `
+      }
+    ];
+
+    let connectors = '';
+    let nodeGroups = '';
+
+    nodes.forEach((node, index) => {
+      const y = topY + index * (nodeH + gap);
+      nodeGroups += `
+        <g class="incident-node" style="animation-delay:${index * 120}ms;">
+          <rect x="${nodeX}" y="${y}" width="${nodeW}" height="${nodeH}" rx="8" fill="var(--surface2)" stroke="${node.color}" stroke-width="1.4" />
+          <text x="${nodeX + 16}" y="${y + 23}" fill="${node.color}" font-size="11" font-family="var(--font-mono)" font-weight="600">${node.title}</text>
+          <g transform="translate(0, ${y})">${node.body}</g>
+        </g>
+      `;
+
+      if (index < nodes.length - 1) {
+        const y1 = y + nodeH + 6;
+        const y2 = topY + (index + 1) * (nodeH + gap) - 10;
+        connectors += `
+          <line x1="${centerX}" y1="${y1}" x2="${centerX}" y2="${y2}"
+                stroke="var(--border2)" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#incident-arrow)" />
+        `;
+      }
+    });
+
+    return `
+      <svg width="100%" height="${totalH}" viewBox="0 0 ${svgW} ${totalH}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Incident decision flow diagram">
+        <defs>
+          <marker id="incident-arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L8,4 L0,8 Z" fill="var(--border2)"></path>
+          </marker>
+        </defs>
+        ${connectors}
+        ${nodeGroups}
+      </svg>
+    `;
+  }
+
+  function showIncidentDiagram(entry) {
+    ensureIncidentDiagramPanel();
+    const panel = document.getElementById('incident-diagram-panel');
+    const key = incidentKey(entry);
+
+    if (panel.classList.contains('open') && incidentDiagramOpenKey === key) {
+      closeIncidentDiagram();
+      return;
+    }
+
+    panel.classList.remove('tier-AUTO', 'tier-CONFIRM', 'tier-ESCALATE');
+    panel.classList.add(`tier-${entry?.decision || 'ESCALATE'}`);
+    incidentDiagramOpenKey = key;
+
+    const subtitle = document.getElementById('incident-diagram-subtitle');
+    const svgWrap = document.getElementById('incident-diagram-svg-wrap');
+    const plain = document.getElementById('incident-diagram-plain');
+
+    const service = entry?.service || 'unknown service';
+    const decision = entry?.decision || 'ESCALATE';
+    const anomaly = num(entry?.anomaly_score);
+    const drift = num(entry?.drift_share);
+    const action = entry?.action || 'unknown action';
+    const anomalyMeta = anomalyLevel(anomaly);
+    const driftMeta = driftLevel(drift);
+
+    subtitle.textContent = `${service} · ${decision}`;
+    svgWrap.innerHTML = buildIncidentDiagramSvg(entry);
+
+    plain.textContent =
+      `The agent noticed unusual behaviour in ${service}. The anomaly score was ${fmt(anomaly)} — ${anomalyMeta.label}. ` +
+      `Data drift was ${Math.round(drift * 100)}% — ${driftMeta.label}. ` +
+      `The agent decided to ${actionIntent(decision)} by running ${action}.`;
+
+    const recommendations = generateRecommendations(entry);
+    renderRecommendations(recommendations);
+    renderConfirmActionSection(entry);
+    panel.classList.add('open');
   }
 
   /* ── timestamp ── */
@@ -904,7 +1806,9 @@
 
     tbody.querySelectorAll('tr.incident-row').forEach((row) => {
       row.addEventListener('click', () => {
-        setSelectedIncident(Number(row.dataset.index));
+        const idx = Number(row.dataset.index);
+        setSelectedIncident(idx);
+        showIncidentDiagram(timeline[idx]);
       });
     });
     highlightSelectedIncidentRow();
@@ -993,6 +1897,7 @@
 
   /* ── init ── */
   async function init() {
+    ensureIncidentDiagramPanel();
     log('Loading timeline.json...');
 
     let timeline = [];
