@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  aiops-agent:
+    build: .
+    container_name: aiops-agent
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+    command: python main.py
+
+  # Optional: Uncomment to add real Prometheus
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  # Optional: Uncomment to add Grafana dashboard
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   ports:
+  #     - "3000:3000"

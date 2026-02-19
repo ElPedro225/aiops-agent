@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.env
+*.egg-info/
+
+# Data & reports (large files)
+data/current/*.csv
+data/current/*.json
+reports/*.html
+reports/*.json
+
+# Models
+models/
+*.pkl
+
+# IDE
+.vscode/
+.idea/
+*.DS_Store
+
+# Logs
+*.log
