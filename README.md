@@ -68,15 +68,19 @@ aiops-agent/
 ## Setup
 
 ```bash
-# 1. Create and activate a virtual environment
+# 1. Clone the repository
+git clone https://github.com/ElPedro225/aiops-agent.git
+cd aiops-agent
+
+# 2. Create and activate a virtual environment
 python -m venv venv
 source venv/bin/activate        # Linux / macOS
 venv\Scripts\activate           # Windows
 
-# 2. Install dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 3. Create environment config
+# 4. Create environment config
 cp .env.example .env
 # Edit .env with your values (see Key Environment Variables below)
 ```
@@ -120,13 +124,15 @@ python main.py --loop
 
 Get alerts on your phone whenever an anomaly is detected:
 
-1. Install the **ntfy** app
+1. Install the **ntfy** app (Android: free · iOS: $1.99).
 2. Subscribe to a topic of your choice (e.g. `aiops-alerts-yourname`).
 3. Set `NTFY_TOPIC=aiops-alerts-yourname` in `.env`.
 4. Run `python main.py` — notifications arrive within 1–2 seconds.
 
 Notification priority maps to decision tier: `ESCALATE` = urgent · `CONFIRM` = high · `AUTO` = default.
 Set `NTFY_TOPIC=` (blank) to disable notifications entirely.
+
+Notifications are also sent when you **Approve** or **Escalate** an incident from the dashboard confirm panel.
 
 ## Dashboard Features
 
@@ -136,8 +142,129 @@ Set `NTFY_TOPIC=` (blank) to disable notifications entirely.
 - **Plain-English explainer** — "What happened / Why / What was done / What to do next."
 - **AI Explanation card** — Claude-generated SRE insight (shown when `ANTHROPIC_API_KEY` is set).
 - **Recommended Actions** — priority/category/effort cards for each decision tier.
-- **Confirm Action panel** — for `CONFIRM` incidents: approve or escalate with one click; table and summary update immediately.
+- **Confirm Action panel** — for `CONFIRM` incidents: approve or escalate with one click; table and summary update immediately; phone notification sent on both actions.
 - **Auto-refresh** — fetches new events every 30 seconds when the API backend is running.
+
+## REST API Endpoints
+
+The FastAPI backend runs on `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/` | Health check — returns server status and agent state |
+| `GET` | `/timeline` | Latest anomaly events from SQLite (param: `limit`) |
+| `GET` | `/history` | All historical events paginated (params: `limit`, `offset`) |
+| `GET` | `/runs` | Summary of each agent run (run_id, event count, decisions) |
+| `GET` | `/drift` | Latest KS-test drift report JSON |
+| `POST` | `/confirm` | Called by dashboard buttons — sends phone notification on human approve/escalate |
+| `POST` | `/run` | Trigger a full agent run in the background |
+
+## How to Test Each Feature
+
+### 1. Agent + Phone Notifications
+
+```bash
+python main.py
+```
+
+**Expected terminal output:**
+```
+[ntfy] #1 sent → auth ESCALATE score=0.123
+[ntfy] #2 sent → payments AUTO score=0.891
+...
+notifications_sent=N
+```
+
+**Expected on phone:** notifications grouped by ntfy app — expand the group to see all.
+To receive all decision tiers set `NOTIFY_MIN_SCORE=0.0` in `.env`.
+
+---
+
+### 2. API Backend
+
+```bash
+# Start the server
+uvicorn api.server:app --reload --host 0.0.0.0 --port 8000
+```
+
+Open in browser:
+- `http://localhost:8000/` — health check JSON
+- `http://localhost:8000/timeline` — live events JSON
+- `http://localhost:8000/docs` — interactive Swagger UI (try each endpoint live)
+
+---
+
+### 3. Dashboard — Live Data + Auto-refresh
+
+```bash
+python -m http.server 5500
+# Open: http://localhost:5500/ui/dashboard.html
+```
+
+**Expected:** log bar shows `API backend detected — using live data.`
+
+Run `python main.py` again — dashboard auto-refreshes within 30 seconds without reloading the page.
+
+---
+
+### 4. Dashboard — Incident Detail
+
+- Click any row in the incident table.
+- **Expected:** SVG pipeline diagram animates, explainer panel shows headline / what happened / why / action taken / next steps.
+
+---
+
+### 5. Dashboard — Confirm Action + Phone Notification
+
+- Click a **CONFIRM** (yellow) row.
+- **Expected:** "Confirm Action" card appears with Approve and Escalate buttons.
+- Click **Approve & Execute**:
+  - Row badge changes to AUTO (green).
+  - Summary counters update.
+  - Phone notification arrives: `[AUTO] human-approved on {service}`.
+- Click **Escalate to Human** on another CONFIRM row:
+  - Row badge changes to ESCALATE (red).
+  - Phone notification arrives: `[ESCALATE] human-escalated on {service}`.
+
+---
+
+### 6. Continuous Loop Mode
+
+```bash
+python main.py --loop
+```
+
+**Expected:** agent runs, prints `[main] Sleeping 60s before next run...`, then runs again automatically. Phone receives a new batch of notifications each cycle. Stop with `Ctrl+C`.
+
+---
+
+### 7. SQLite Persistence
+
+After running `python main.py` at least twice:
+
+```bash
+python -c "
+import sqlite3
+conn = sqlite3.connect('reports/aiops.db')
+rows = conn.execute('SELECT COUNT(*), COUNT(DISTINCT run_id) FROM events').fetchone()
+print(f'Total events: {rows[0]}, Distinct runs: {rows[1]}')
+conn.close()
+"
+```
+
+**Expected:** `Total events: N, Distinct runs: 2+` — proves data accumulates across runs rather than overwriting.
+
+---
+
+### 8. API Interactive Test (Swagger)
+
+Open `http://localhost:8000/docs`:
+
+1. Click `POST /run` → **Try it out** → **Execute** — triggers an agent run via HTTP.
+2. Click `GET /timeline` → **Try it out** → **Execute** — returns live event JSON.
+3. Watch `GET /` → `agent_running` flip to `true` during the run then back to `false`.
+
+---
 
 ## Timeline JSON Schema
 
@@ -177,7 +304,7 @@ HUMAN_APPROVAL_REQUIRED=true
 # Mobile notifications (ntfy.sh)
 NTFY_TOPIC=                     # leave blank to disable
 NTFY_URL=https://ntfy.sh
-NOTIFY_MIN_SCORE=0.40
+NOTIFY_MIN_SCORE=0.0            # 0.0 = notify on all decisions
 NOTIFY_DECISIONS=AUTO,CONFIRM,ESCALATE
 ALERT_COOLDOWN_MINUTES=5        # set 0 to fire every alert (testing)
 
