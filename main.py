@@ -1,14 +1,17 @@
 """
 File: main.py
-Purpose: Orchestrate ingestion, detection, drift checks, policy decisions, and action execution end-to-end.
+Purpose: Orchestrate ingestion, anomaly detection, policy decisions, action execution, notifications,
+         and SQLite persistence end-to-end.
 Layer: Cross-layer orchestration entrypoint in the AIOps architecture.
 Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +21,10 @@ from dotenv import load_dotenv
 from actions.remediation import execute_action, open_ticket
 from anomaly_detection.detector import METRIC_COLUMNS, TwoStageAnomalyDetector
 from data_ingestion.simulator import DEFAULT_SERVICES, generate_telemetry
-from drift_monitor.evidently_runner import run_evidently
+from llm.claude_reasoner import explain_anomaly
+from notifications.notifier import send_anomaly_alert
 from policy_engine.policy import AUTO, CONFIRM, ESCALATE, decide, load_thresholds, summarize_decision
+from storage.db import init_db, insert_event, new_run_id
 
 
 def _env_int(name: str, default: int) -> int:
@@ -52,6 +57,7 @@ def _build_paths(project_root: Path) -> dict[str, Path]:
         "reference": project_root / "data" / "reference" / "metrics.csv",
         "current": project_root / "data" / "current" / "metrics.csv",
         "report_dir": report_dir,
+        "db": report_dir / "aiops.db",
     }
 
 
@@ -73,6 +79,8 @@ def _ensure_data(paths: dict[str, Path]) -> None:
     cur_samples = _env_int("SIM_CURRENT_SAMPLES", 100)
     seed = _env_int("SIM_RANDOM_SEED", 42)
     inject_anomaly = _parse_bool(os.getenv("SIM_INJECT_ANOMALY"), default=True)
+    # Intent: drift_factor shifts current distribution mean by N*std to trigger the KS drift test.
+    drift_factor = _env_float("SIM_DRIFT_FACTOR", 0.0)
 
     reference_df = generate_telemetry(
         num_samples=ref_samples,
@@ -85,6 +93,7 @@ def _ensure_data(paths: dict[str, Path]) -> None:
         services=services,
         seed=seed + 1,
         inject_anomaly=inject_anomaly,
+        drift_factor=drift_factor,
     )
     reference_df.to_csv(paths["reference"], index=False)
     current_df.to_csv(paths["current"], index=False)
@@ -144,7 +153,7 @@ def _to_serializable(value: Any) -> Any:
 
 
 def run_agent() -> int:
-    """Run the end-to-end AIOps workflow."""
+    """Run the end-to-end AIOps workflow once."""
     try:
         load_dotenv()
         project_root = Path(__file__).resolve().parent
@@ -164,19 +173,22 @@ def run_agent() -> int:
         scored_df["timestamp"] = pd.to_datetime(scored_df["timestamp"], errors="coerce")
 
         thresholds = load_thresholds()
-        # Intent: periodic drift checks balance trust calibration against Evidently compute overhead.
-        drift_interval_minutes = _env_int("DRIFT_CHECK_INTERVAL_MINUTES", 5)
         low_threshold = float(thresholds.get("ANOMALY_LOW_THRESHOLD", 0.40))
-        last_drift_check_ts: pd.Timestamp | None = None
-        latest_drift = {
-            "drift_share": 0.0,
-            "drifted_columns": [],
-            "share_missing": 0.0,
-            "share_constant": 0.0,
-            "html_path": "",
-            "json_path": "",
-        }
         timeline: list[dict[str, Any]] = []
+
+        # --- Notification config ---
+        notify_min_score = _env_float("NOTIFY_MIN_SCORE", low_threshold)
+        notify_decisions_env = os.getenv("NOTIFY_DECISIONS", "AUTO,CONFIRM,ESCALATE")
+        notify_decisions = {d.strip().upper() for d in notify_decisions_env.split(",")}
+
+        # --- Alert deduplication: suppress repeated alerts for same (service, decision) within cooldown ---
+        # Intent: prevents notification spam when a service stays anomalous across many rows.
+        cooldown_minutes = _env_int("ALERT_COOLDOWN_MINUTES", 5)
+        _alert_cooldown: dict[tuple[str, str], pd.Timestamp] = {}
+
+        # --- SQLite persistence ---
+        db_conn = init_db(paths["db"])
+        run_id = new_run_id()
 
         for idx, row in scored_df.iterrows():
             timestamp = row.get("timestamp")
@@ -185,37 +197,12 @@ def run_agent() -> int:
             z_score = float(
                 ((row_metric_values - detector.means) / detector.stds).abs().max()  # type: ignore[operator]
             )
-            should_check_drift = last_drift_check_ts is None
-            if not should_check_drift and pd.notna(row_ts):
-                should_check_drift = (
-                    row_ts - last_drift_check_ts  # type: ignore[operator]
-                    >= pd.Timedelta(minutes=drift_interval_minutes)
-                )
-            elif not should_check_drift and pd.isna(row_ts):
-                should_check_drift = (idx % max(drift_interval_minutes, 1)) == 0
-
-            if should_check_drift:
-                report_name = f"drift_report_{idx + 1:04d}"
-                try:
-                    # WARNING: drift checks can become expensive with large windows; interval should be tuned by scale.
-                    latest_drift = run_evidently(
-                        ref_df=reference_df[METRIC_COLUMNS],
-                        cur_df=current_df.iloc[: idx + 1][METRIC_COLUMNS],
-                        report_dir=str(paths["report_dir"]),
-                        report_name=report_name,
-                    )
-                except Exception as exc:
-                    print(f"[main] Drift check failed at row {idx}: {exc}")
-                if pd.notna(row_ts):
-                    last_drift_check_ts = row_ts
-
             anomaly_score = float(row["anomaly_score"])
-            drift_share = float(latest_drift.get("drift_share", 0.0))
-            share_missing = float(latest_drift.get("share_missing", 0.0))
+            # Intent: drift monitoring removed; policy decides on anomaly score alone.
             decision = decide(
                 anomaly_score=anomaly_score,
-                drift_share=drift_share,
-                share_missing=share_missing,
+                drift_share=0.0,
+                share_missing=0.0,
                 thresholds=thresholds,
             )
 
@@ -224,11 +211,38 @@ def run_agent() -> int:
             action_details.update(
                 {
                     "anomaly_score": anomaly_score,
-                    "drift_share": drift_share,
-                    "share_missing": share_missing,
                     "row_index": int(idx),
                 }
             )
+
+            # --- LLM explanation (optional, gated by ANTHROPIC_API_KEY) ---
+            llm_explanation = explain_anomaly(
+                service=service_name,
+                anomaly_score=anomaly_score,
+                decision=decision,
+                metrics={col: float(row[col]) for col in METRIC_COLUMNS},
+                drift_share=drift_share,
+            )
+
+            # --- Mobile push notification with deduplication ---
+            if anomaly_score >= notify_min_score and decision in notify_decisions:
+                cooldown_key = (service_name, decision)
+                last_sent = _alert_cooldown.get(cooldown_key)
+                # Intent: cooldown suppresses spam when the same service stays anomalous across many rows.
+                should_notify = last_sent is None or (
+                    pd.notna(row_ts)
+                    and (row_ts - last_sent) >= pd.Timedelta(minutes=cooldown_minutes)
+                )
+                if should_notify:
+                    sent = send_anomaly_alert(
+                        service=service_name,
+                        anomaly_score=anomaly_score,
+                        decision=decision,
+                        action=action_name,
+                        details={col: float(row[col]) for col in METRIC_COLUMNS},
+                    )
+                    if sent and pd.notna(row_ts):
+                        _alert_cooldown[cooldown_key] = row_ts
 
             if decision == AUTO:
                 action_outcome = execute_action(
@@ -259,39 +273,41 @@ def run_agent() -> int:
 
             decision_text = summarize_decision(
                 anomaly_score=anomaly_score,
-                drift_share=drift_share,
-                share_missing=share_missing,
+                drift_share=0.0,
+                share_missing=0.0,
                 decision=decision,
             )
+
             # Intent: every decision is appended, even non-executed ones, because audit trails are mandatory in AIOps.
-            timeline.append(
-                {
-                    "index": int(idx),
-                    "timestamp": row_ts,
-                    "service": service_name,
-                    "anomaly_score": anomaly_score,
-                    "z_score": z_score,
-                    "iforest_score": float(row["iforest_score"]),
-                    "z_anomaly": bool(row["z_anomaly"]),
-                    "drift_share": drift_share,
-                    "share_missing": share_missing,
-                    "decision": decision,
-                    "action": str(action_outcome.get("action", action_name)),
-                    "executed": bool(action_outcome.get("executed", False)),
-                    "result": str(action_outcome.get("result", "")),
-                    "decision_summary": decision_text,
-                    "report_html": str(latest_drift.get("html_path", "")),
-                    "report_json": str(latest_drift.get("json_path", "")),
-                }
-            )
+            event: dict[str, Any] = {
+                "index": int(idx),
+                "timestamp": row_ts,
+                "service": service_name,
+                "anomaly_score": anomaly_score,
+                "z_score": z_score,
+                "iforest_score": float(row["iforest_score"]),
+                "z_anomaly": bool(row["z_anomaly"]),
+                "decision": decision,
+                "action": str(action_outcome.get("action", action_name)),
+                "executed": bool(action_outcome.get("executed", False)),
+                "result": str(action_outcome.get("result", "")),
+                "decision_summary": decision_text,
+                "llm_explanation": llm_explanation,
+            }
+            timeline.append(event)
+
+            # --- Persist to SQLite immediately (durable, survives crashes) ---
+            insert_event(db_conn, event, run_id)
+
+        db_conn.close()
 
         timeline_df = pd.DataFrame(timeline)
         if timeline_df.empty:
             print("[main] No events processed.")
             return 1
 
+        # Write timeline.json for dashboard compatibility
         timeline_json_path = paths["report_dir"] / "timeline.json"
-        # TODO(phase-7): Stream timeline events to durable storage — required for long-term analytics and compliance.
         timeline_json_payload: list[dict[str, Any]] = []
         for event in timeline:
             timeline_json_payload.append(
@@ -303,7 +319,7 @@ def run_agent() -> int:
                     "decision": str(event.get("decision", "")),
                     "action": str(event.get("action", "")),
                     "executed": bool(event.get("executed", False)),
-                    "drift_share": float(event.get("drift_share", 0.0)),
+                    "llm_explanation": str(event.get("llm_explanation", "")),
                 }
             )
         timeline_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -324,17 +340,8 @@ def run_agent() -> int:
             f"events={len(timeline_df)} anomalies(>=ANOMALY_LOW_THRESHOLD={low_threshold})={anomaly_count}"
         )
         print(f"decision_counts={decision_counts}")
-        print(
-            "latest_drift: drift_share={drift_share:.4f}, share_missing={share_missing:.4f}, share_constant={share_constant:.4f}".format(
-                drift_share=float(latest_drift.get("drift_share", 0.0)),
-                share_missing=float(latest_drift.get("share_missing", 0.0)),
-                share_constant=float(latest_drift.get("share_constant", 0.0)),
-            )
-        )
-        print(f"drifted_columns={latest_drift.get('drifted_columns', [])}")
-        print(f"report_html={latest_drift.get('html_path', '')}")
-        print(f"report_json={latest_drift.get('json_path', '')}")
         print(f"timeline_json={timeline_json_path}")
+        print(f"run_id={run_id}")
 
         print("\nTop anomalies:")
         print(
@@ -345,7 +352,6 @@ def run_agent() -> int:
                     "anomaly_score",
                     "iforest_score",
                     "z_anomaly",
-                    "drift_share",
                     "decision",
                     "action",
                     "executed",
@@ -361,5 +367,53 @@ def run_agent() -> int:
         return 1
 
 
+def run_loop(interval_seconds: int) -> None:
+    """Run the agent in a continuous loop, regenerating data on every iteration.
+
+    Press Ctrl+C to stop gracefully.
+    Intent: continuous mode simulates a real AIOps daemon that processes
+    fresh telemetry windows on a fixed schedule.
+    """
+    print(f"[main] Starting continuous loop — interval={interval_seconds}s. Press Ctrl+C to stop.")
+    iteration = 0
+    try:
+        while True:
+            iteration += 1
+            print(f"\n[main] === Loop iteration {iteration} ===")
+
+            # Force fresh data each iteration so each run sees new telemetry.
+            project_root = Path(__file__).resolve().parent
+            paths = _build_paths(project_root)
+            for csv_path in (paths["reference"], paths["current"]):
+                if csv_path.exists():
+                    csv_path.unlink()
+
+            run_agent()
+            print(f"[main] Sleeping {interval_seconds}s before next run...")
+            time.sleep(interval_seconds)
+    except KeyboardInterrupt:
+        print("\n[main] Loop stopped by user.")
+
+
 if __name__ == "__main__":
-    raise SystemExit(run_agent())
+    parser = argparse.ArgumentParser(description="AIOps Agent")
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Run continuously in a loop (press Ctrl+C to stop)",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=None,
+        help="Loop interval in seconds (default: AGENT_LOOP_INTERVAL_SECONDS env var or 60)",
+    )
+    args = parser.parse_args()
+
+    load_dotenv()
+
+    if args.loop:
+        interval = args.interval or _env_int("AGENT_LOOP_INTERVAL_SECONDS", 60)
+        run_loop(interval)
+    else:
+        raise SystemExit(run_agent())

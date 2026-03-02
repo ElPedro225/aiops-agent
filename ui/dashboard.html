@@ -430,55 +430,7 @@
     /* ─── SIDEBAR ─── */
     .sidebar { display: flex; flex-direction: column; gap: 16px; }
 
-    /* Drift panel */
-    .drift-panel {
-      padding: 20px;
-    }
 
-    .drift-row {
-      padding: 12px 0;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .drift-row:last-of-type { border-bottom: none; }
-
-    .drift-key {
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .drift-val {
-      font-family: var(--font-display);
-      font-size: 24px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-    }
-
-    .drift-bar-track {
-      height: 3px;
-      background: var(--dim);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-
-    .drift-bar-fill {
-      height: 100%;
-      border-radius: 2px;
-      transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
-    }
-
-    .drift-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-top: 10px;
-    }
 
     .chip {
       font-size: 11px;
@@ -980,6 +932,10 @@
           <div class="ex-label">What A Person Should Do Next</div>
           <div class="ex-text" id="ex-next">-</div>
         </div>
+        <div class="ex-card" id="ex-llm-card" style="display:none; grid-column: 1 / -1; border-color: var(--blue);">
+          <div class="ex-label" style="color: var(--blue);">&#x2728; AI Explanation (Claude)</div>
+          <div class="ex-text" id="ex-llm" style="font-style: italic;">-</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1007,11 +963,10 @@
               <th>Decision</th>
               <th>Action</th>
               <th>Executed</th>
-              <th>Drift Share</th>
             </tr>
           </thead>
           <tbody id="timeline-body">
-            <tr class="empty-row"><td colspan="8">Loading incident data...</td></tr>
+            <tr class="empty-row"><td colspan="7">Loading incident data...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1019,37 +974,6 @@
 
     <!-- SIDEBAR -->
     <div class="sidebar">
-
-      <!-- DRIFT PANEL -->
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title">
-            <div class="panel-title-dot" style="background:var(--orange);box-shadow:0 0 8px var(--orange)"></div>
-            Drift Monitor
-          </div>
-        </div>
-        <div class="drift-panel">
-          <div class="drift-row">
-            <div class="drift-key">Drift Share</div>
-            <div class="drift-val" id="drift-share" style="color:var(--orange)">—</div>
-            <div class="drift-bar-track">
-              <div class="drift-bar-fill" id="drift-bar" style="width:0%;background:var(--orange)"></div>
-            </div>
-          </div>
-          <div class="drift-row">
-            <div class="drift-key">Missing Data</div>
-            <div class="drift-val" id="share-missing" style="color:var(--purple)">—</div>
-            <div class="drift-bar-track">
-              <div class="drift-bar-fill" id="missing-bar" style="width:0%;background:var(--purple)"></div>
-            </div>
-          </div>
-          <div class="drift-row">
-            <div class="drift-key">Drifted Columns</div>
-            <div class="drift-val" id="drifted-count" style="color:var(--yellow)">—</div>
-            <div class="drift-chips" id="drift-chips"></div>
-          </div>
-        </div>
-      </div>
 
       <!-- STATUS LOG -->
       <div class="panel">
@@ -1081,8 +1005,10 @@
 </div>
 
 <script>
+  // Intent: try the FastAPI backend first for live data; fall back to static JSON files for file-only mode.
+  const API_BASE     = "http://localhost:8000";
   const TIMELINE_URL = "../reports/timeline.json";
-  const DRIFT_URL    = "../reports/drift_report.json";
+  let   useApi       = false; // resolved during init()
   let timelineState = [];
   let selectedIncidentIndex = 0;
   let incidentDiagramOpenKey = null;
@@ -1135,12 +1061,6 @@
     return 'It selected a custom or unknown action type.';
   }
 
-  function driftRiskText(driftShare) {
-    const drift = num(driftShare);
-    if (drift >= 0.3) return 'Input data changed a lot, so model trust is lower.';
-    if (drift >= 0.1) return 'Input data shifted somewhat, so caution is advised.';
-    return 'Input data is stable, so model trust is higher.';
-  }
 
   function incidentKey(entry) {
     return [
@@ -1150,12 +1070,14 @@
       entry?.action || '',
       String(num(entry?.anomaly_score)),
       String(num(entry?.z_score)),
-      String(num(entry?.drift_share))
     ].join('|');
   }
 
   function confirmationStoreKey(entry) {
-    return `${entry?.timestamp || ''}|${entry?.service || ''}`;
+    // Intent: use _uiIdx (the position in the current render) as the unique key so rows from
+    // different agent runs that share the same timestamp+service never collide.
+    if (entry?._uiIdx !== undefined) return String(entry._uiIdx);
+    return `${entry?.timestamp || ''}|${entry?.service || ''}|${entry?.anomaly_score ?? ''}`;
   }
 
   function formatTimestampForTable(tsValue) {
@@ -1167,23 +1089,25 @@
   }
 
   function findTableRowByIncident(entry) {
+    // Intent: prefer data-index lookup (O(1), always unique) over text matching (fragile with duplicate timestamps).
+    if (entry?._uiIdx !== undefined) {
+      return document.querySelector(`#timeline-body tr[data-index="${entry._uiIdx}"]`) || null;
+    }
     const targetTs = formatTimestampForTable(entry?.timestamp);
     const targetService = String(entry?.service || '').trim();
     const rows = document.querySelectorAll('#timeline-body tr.incident-row');
     for (const row of rows) {
       const ts = (row.cells[0]?.textContent || '').trim();
       const service = (row.cells[1]?.textContent || '').trim();
-      if (ts === targetTs && service === targetService) {
-        return row;
-      }
+      if (ts === targetTs && service === targetService) return row;
     }
     return null;
   }
 
-  function updateTableExecutedVisual(entry, executed) {
+  function updateTableExecutedVisual(entry, executed, label) {
     const row = findTableRowByIncident(entry);
     if (!row || !row.cells[6]) return;
-    row.cells[6].textContent = executed ? '✓ yes' : '✗ no';
+    row.cells[6].textContent = label || (executed ? '✓ yes' : '✗ no');
     row.cells[6].classList.toggle('exec-true', !!executed);
     row.cells[6].classList.toggle('exec-false', !executed);
   }
@@ -1211,12 +1135,6 @@
     return { label: 'low', color: 'var(--green)' };
   }
 
-  function driftLevel(share) {
-    const d = num(share);
-    if (d > 0.3) return { label: 'shifting', color: 'var(--red)' };
-    if (d > 0.1) return { label: 'shifting', color: 'var(--yellow)' };
-    return { label: 'stable', color: 'var(--green)' };
-  }
 
   function closeIncidentDiagram() {
     const panel = document.getElementById('incident-diagram-panel');
@@ -1270,9 +1188,9 @@
   }
 
   function policyLine(decision) {
-    if (decision === 'AUTO') return 'High confidence, low drift — autonomous action taken';
+    if (decision === 'AUTO') return 'High confidence — autonomous action taken';
     if (decision === 'CONFIRM') return 'Moderate confidence — human approval required';
-    return 'Low confidence or high drift — escalated to human';
+    return 'Low confidence — escalated to human';
   }
 
   function actionIntent(decision) {
@@ -1285,7 +1203,6 @@
     const recommendations = [];
     const anomalyScore = num(entry?.anomaly_score);
     const zScore = num(entry?.z_score);
-    const driftShare = num(entry?.drift_share);
     const decision = String(entry?.decision || '');
     const executed = !!entry?.executed;
 
@@ -1329,25 +1246,6 @@
       });
     }
 
-    if (driftShare > 0.3) {
-      recommendations.push({
-        priority: 'critical',
-        category: 'model',
-        title: 'Retrain anomaly detection model',
-        description: 'More than 30% of features have drifted from the training baseline. The model judgement is no longer reliable, so retraining on recent data is required.',
-        effort: 'planned'
-      });
-    }
-
-    if (driftShare > 0.1 && driftShare <= 0.3) {
-      recommendations.push({
-        priority: 'medium',
-        category: 'model',
-        title: 'Review model thresholds',
-        description: 'Mild drift has been detected. Recalibrate thresholds to reduce false positives and avoid missed incidents.',
-        effort: 'planned'
-      });
-    }
 
     if (decision === 'ESCALATE') {
       recommendations.push({
@@ -1369,15 +1267,6 @@
       });
     }
 
-    if (driftShare > 0.1) {
-      recommendations.push({
-        priority: 'medium',
-        category: 'data',
-        title: 'Audit incoming telemetry sources',
-        description: 'Feature drift can indicate metric collection changes or system behaviour shifts. Validate the data pipeline and instrumentation consistency.',
-        effort: 'planned'
-      });
-    }
 
     recommendations.push({
       priority: 'low',
@@ -1416,7 +1305,7 @@
     const stored = confirmationStateStore[key] || null;
     const latestEntry = findTimelineEntryByKey(key) || entry;
 
-    if (!stored && !(latestEntry?.decision === 'CONFIRM' && latestEntry?.executed === false)) {
+    if (!stored && !(latestEntry?.decision === 'CONFIRM' && !latestEntry?.executed)) {
       container.innerHTML = '';
       return;
     }
@@ -1472,7 +1361,7 @@ Action: ${esc(latestEntry.action || '')}</div>
         stateEntry.executed = true;
         stateEntry.decision = 'AUTO';
       }
-      updateTableExecutedVisual(latestEntry, true);
+      updateTableExecutedVisual(latestEntry, true, '✓ approved');
       updateTableDecisionVisual(latestEntry, 'AUTO');
       renderSummary(timelineState);
       confirmationStateStore[key] = { state: 'approved' };
@@ -1524,7 +1413,6 @@ Action: ${esc(latestEntry.action || '')}</div>
     const timestamp = entry?.timestamp ? String(entry.timestamp).replace('T', ' ').split('.')[0] : 'unknown time';
     const anomaly = num(entry?.anomaly_score);
     const z = num(entry?.z_score);
-    const drift = num(entry?.drift_share);
     const decision = entry?.decision || 'ESCALATE';
     const action = entry?.action || 'unknown_action';
     const executed = !!entry?.executed;
@@ -1533,9 +1421,7 @@ Action: ${esc(latestEntry.action || '')}</div>
     const zPass = z <= 3.0;
     const zColor = zPass ? 'var(--green)' : 'var(--red)';
     const zState = zPass ? 'Pass' : 'Fail';
-    const driftMeta = driftLevel(drift);
     const decisionColor = colorByDecision(decision);
-    const driftPct = Math.max(0, Math.min(100, Math.round(drift * 100)));
     const anomalyPct = Math.max(0, Math.min(100, Math.round(anomaly * 100)));
 
     const svgW = 420;
@@ -1544,7 +1430,7 @@ Action: ${esc(latestEntry.action || '')}</div>
     const nodeH = 92;
     const gap = 48;
     const topY = 22;
-    const totalH = topY + (nodeH + gap) * 6 - gap + 24;
+    const totalH = topY + (nodeH + gap) * 5 - gap + 24;
     const centerX = svgW / 2;
 
     const nodes = [
@@ -1571,16 +1457,6 @@ Action: ${esc(latestEntry.action || '')}</div>
         body: `
           <text x="${nodeX + 16}" y="48" fill="${zColor}" font-size="18" font-family="var(--font-display)" font-weight="700">${fmt(z)}</text>
           <text x="${nodeX + 16}" y="66" fill="var(--text)" font-size="11" font-family="var(--font-mono)">Threshold 3.0: ${zState}</text>
-        `
-      },
-      {
-        title: 'Drift Monitor',
-        color: driftMeta.color,
-        body: `
-          <text x="${nodeX + 16}" y="35" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">Evidently AI</text>
-          <text x="${nodeX + 16}" y="54" fill="${driftMeta.color}" font-size="20" font-family="var(--font-display)" font-weight="700">${driftPct}%</text>
-          <rect x="${nodeX + 16}" y="62" width="${nodeW - 32}" height="8" rx="4" fill="var(--dim)" />
-          <rect x="${nodeX + 16}" y="62" width="${((nodeW - 32) * driftPct) / 100}" height="8" rx="4" fill="${driftMeta.color}" />
         `
       },
       {
@@ -1659,17 +1535,14 @@ Action: ${esc(latestEntry.action || '')}</div>
     const service = entry?.service || 'unknown service';
     const decision = entry?.decision || 'ESCALATE';
     const anomaly = num(entry?.anomaly_score);
-    const drift = num(entry?.drift_share);
     const action = entry?.action || 'unknown action';
     const anomalyMeta = anomalyLevel(anomaly);
-    const driftMeta = driftLevel(drift);
 
     subtitle.textContent = `${service} · ${decision}`;
     svgWrap.innerHTML = buildIncidentDiagramSvg(entry);
 
     plain.textContent =
       `The agent noticed unusual behaviour in ${service}. The anomaly score was ${fmt(anomaly)} — ${anomalyMeta.label}. ` +
-      `Data drift was ${Math.round(drift * 100)}% — ${driftMeta.label}. ` +
       `The agent decided to ${actionIntent(decision)} by running ${action}.`;
 
     const recommendations = generateRecommendations(entry);
@@ -1706,7 +1579,6 @@ Action: ${esc(latestEntry.action || '')}</div>
     const e = entry || {};
     const anomaly = num(e.anomaly_score);
     const zScore = num(e.z_score);
-    const drift = num(e.drift_share);
     const executed = !!e.executed;
     const decision = e.decision || 'UNKNOWN';
     const action = e.action || 'unknown_action';
@@ -1715,7 +1587,7 @@ Action: ${esc(latestEntry.action || '')}</div>
     const severity = anomaly >= 0.7 ? 'high' : anomaly >= 0.4 ? 'moderate' : 'low';
     const headline = `Incident on ${service}: ${severity} anomaly (${fmt(anomaly)}) with decision ${decision}.`;
     const what = `The system observed unusual behavior in ${service}. The anomaly score is ${fmt(anomaly)} and the z-score is ${fmt(zScore)}.`;
-    const why = `${decisionText(decision)} ${driftRiskText(drift)} (drift share ${fmt(drift)}).`;
+    const why = `${decisionText(decision)}`;
     const actionMeaning = `${actionText(action)} Executed: ${executed ? 'yes' : 'no'}.`;
 
     let next = 'Keep monitoring this service and compare with recent incidents.';
@@ -1734,6 +1606,17 @@ Action: ${esc(latestEntry.action || '')}</div>
     document.getElementById('ex-why').textContent = why;
     document.getElementById('ex-action').textContent = actionMeaning;
     document.getElementById('ex-next').textContent = next;
+
+    // Show AI explanation if Claude generated one for this incident.
+    const llmEl   = document.getElementById('ex-llm');
+    const llmCard = document.getElementById('ex-llm-card');
+    const llmText = (e.llm_explanation || '').trim();
+    if (llmText) {
+      llmEl.textContent = llmText;
+      llmCard.style.display = '';
+    } else {
+      llmCard.style.display = 'none';
+    }
   }
 
   function highlightSelectedIncidentRow() {
@@ -1781,8 +1664,12 @@ Action: ${esc(latestEntry.action || '')}</div>
     document.getElementById('table-count').textContent =
       `${timeline.length} event${timeline.length !== 1 ? 's' : ''}`;
 
+    // Intent: stamp each entry with its render position so confirmationStoreKey is always unique,
+    // even when multiple agent runs produce events with identical timestamp+service combinations.
+    timeline.forEach((e, i) => { e._uiIdx = i; });
+
     if (!Array.isArray(timeline) || timeline.length === 0) {
-      tbody.innerHTML = `<tr class="empty-row"><td colspan="8">No incident data found in timeline.json</td></tr>`;
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="7">No incident data found in timeline.json</td></tr>`;
       return;
     }
 
@@ -1792,6 +1679,17 @@ Action: ${esc(latestEntry.action || '')}</div>
       const aScore   = num(e.anomaly_score);
       const ts       = e.timestamp ? String(e.timestamp).replace('T',' ').split('.')[0] : '—';
 
+      // Intent: show human-approved indicator separately from agent-auto-executed so operators
+      // can distinguish which decisions were human-confirmed vs autonomously handled.
+      const humanApproved = !!confirmationStateStore[String(i)]?.state === true
+        && confirmationStateStore[String(i)]?.state === 'approved';
+      const agentExecuted = decision === 'AUTO' && e.executed;
+      const execLabel = humanApproved ? '✓ approved'
+        : agentExecuted           ? '⚡ agent'
+        : e.executed              ? '✓ yes'
+        :                           '✗ no';
+      const execClass = (humanApproved || e.executed) ? 'exec-true' : 'exec-false';
+
       return `<tr class="incident-row" data-index="${i}" style="animation:fadeUp 0.3s ${i * 0.03}s ease both">
         <td class="muted">${esc(ts)}</td>
         <td>${esc(e.service || '—')}</td>
@@ -1799,8 +1697,7 @@ Action: ${esc(latestEntry.action || '')}</div>
         <td class="score-cell">${fmt(e.z_score)}</td>
         <td><span class="badge ${badge}">${esc(decision)}</span></td>
         <td class="muted">${esc(e.action || '—')}</td>
-        <td class="${e.executed ? 'exec-true' : 'exec-false'}">${e.executed ? '✓ yes' : '✗ no'}</td>
-        <td class="muted">${fmt(e.drift_share)}</td>
+        <td class="${execClass}">${execLabel}</td>
       </tr>`;
     }).join('');
 
@@ -1814,80 +1711,6 @@ Action: ${esc(latestEntry.action || '')}</div>
     highlightSelectedIncidentRow();
   }
 
-  /* ── drift panel ── */
-  function parseDrift(json) {
-    if (!json || typeof json !== 'object') return { drift_share: 0, share_missing: 0, drifted_columns: [] };
-
-    // flat format (our custom JSON)
-    if ('drift_share' in json) {
-      return {
-        drift_share: num(json.drift_share),
-        share_missing: num(json.share_missing),
-        drifted_columns: Array.isArray(json.drifted_columns) ? json.drifted_columns : [],
-      };
-    }
-
-    // Evidently full report format
-    const metrics = Array.isArray(json.metrics) ? json.metrics : [];
-    let driftShare = 0, shareMissing = 0;
-    const drifted = new Set(), observed = new Set();
-
-    for (const m of metrics) {
-      const name = String(m?.metric_name || '');
-      const val  = m?.value;
-      const cfg  = m?.config || {};
-
-      if (name === 'DriftedColumnsCount()') {
-        driftShare = num(val?.share ?? val, driftShare);
-      }
-      if (name === 'DatasetMissingValueCount()') {
-        shareMissing = num(val?.share ?? val, shareMissing);
-      }
-      if (name.startsWith('ValueDrift(')) {
-        const col = cfg.column;
-        if (col) {
-          observed.add(String(col));
-          const method = String(cfg.method || '').toLowerCase();
-          const isPVal = method.includes('ks') || method.includes('p_value');
-          const threshold = num(cfg.threshold, NaN);
-          const driftVal  = num(val, NaN);
-          if (Number.isFinite(threshold) && Number.isFinite(driftVal)) {
-            if ((isPVal && driftVal < threshold) || (!isPVal && driftVal > threshold)) {
-              drifted.add(String(col));
-            }
-          }
-        }
-      }
-    }
-
-    if (driftShare === 0 && drifted.size > 0) {
-      driftShare = drifted.size / Math.max(observed.size, 1);
-    }
-
-    return { drift_share: driftShare, share_missing: shareMissing, drifted_columns: Array.from(drifted) };
-  }
-
-  function renderDrift(raw) {
-    const d = parseDrift(raw);
-    const pct = v => Math.min(Math.round(v * 100), 100);
-
-    document.getElementById('drift-share').textContent  = pct(d.drift_share) + '%';
-    document.getElementById('share-missing').textContent = pct(d.share_missing) + '%';
-    document.getElementById('drifted-count').textContent = d.drifted_columns.length;
-
-    document.getElementById('drift-bar').style.width    = pct(d.drift_share) + '%';
-    document.getElementById('missing-bar').style.width  = pct(d.share_missing) + '%';
-
-    // colour drift bar by severity
-    const bar = document.getElementById('drift-bar');
-    bar.style.background = d.drift_share > 0.3 ? 'var(--red)' : d.drift_share > 0.1 ? 'var(--yellow)' : 'var(--green)';
-
-    const chips = document.getElementById('drift-chips');
-    chips.innerHTML = d.drifted_columns.length
-      ? d.drifted_columns.map(c => `<span class="chip">${esc(c)}</span>`).join('')
-      : `<span class="chip">no drift detected</span>`;
-  }
-
   /* ── fetch ── */
   async function fetchJson(url) {
     const r = await fetch(url, { cache: 'no-store' });
@@ -1895,27 +1718,57 @@ Action: ${esc(latestEntry.action || '')}</div>
     return r.json();
   }
 
+  /* ── refresh: load data and re-render without resetting the full page ── */
+  async function refresh() {
+    let timeline = [];
+
+    if (useApi) {
+      try {
+        const raw = await fetchJson(`${API_BASE}/timeline?limit=500`);
+        timeline = Array.isArray(raw) ? raw : [];
+        log(`[API] Refreshed — ${timeline.length} events.`, 'ok');
+      } catch (err) {
+        log(`[API] Timeline error: ${err.message}`, 'error');
+      }
+    } else {
+      try {
+        const raw = await fetchJson(TIMELINE_URL);
+        timeline = Array.isArray(raw) ? raw : [];
+        log(`Refreshed — ${timeline.length} events.`, 'ok');
+      } catch (err) {
+        log(`Timeline error: ${err.message}`, 'error');
+      }
+    }
+
+    timelineState = timeline;
+    renderSummary(timeline);
+    renderTable(timeline);
+    renderExplainer(timeline);
+  }
+
   /* ── init ── */
   async function init() {
     ensureIncidentDiagramPanel();
-    log('Loading timeline.json...');
 
+    // Detect whether the FastAPI backend is reachable.
+    try {
+      const health = await fetchJson(`${API_BASE}/`);
+      if (health && health.status === 'ok') {
+        useApi = true;
+        log('API backend detected — using live data.', 'ok');
+      }
+    } catch (_) {
+      log('API not reachable — using static JSON files.', 'warn');
+    }
+
+    log('Loading timeline...');
     let timeline = [];
     try {
-      const raw = await fetchJson(TIMELINE_URL);
+      const raw = await fetchJson(useApi ? `${API_BASE}/timeline?limit=500` : TIMELINE_URL);
       timeline = Array.isArray(raw) ? raw : [];
       log(`Loaded ${timeline.length} incident events.`, 'ok');
     } catch (err) {
       log(`Timeline error: ${err.message}`, 'error');
-    }
-
-    log('Loading drift_report.json...');
-    let driftRaw = null;
-    try {
-      driftRaw = await fetchJson(DRIFT_URL);
-      log('Drift report loaded.', 'ok');
-    } catch (err) {
-      log(`Drift error: ${err.message}`, 'warn');
     }
 
     timelineState = timeline;
@@ -1924,11 +1777,13 @@ Action: ${esc(latestEntry.action || '')}</div>
     renderSummary(timeline);
     renderTable(timeline);
     renderExplainer(timeline);
-    renderDrift(driftRaw);
 
     const decisions = [...new Set(timeline.map(e => e.decision))];
     log(`Decisions seen: ${decisions.join(', ') || 'none'}`, decisions.includes('ESCALATE') ? 'warn' : 'ok');
     log('Dashboard ready.');
+
+    // Auto-refresh every 30 seconds so the dashboard stays live without a page reload.
+    setInterval(refresh, 30_000);
   }
 
   init();

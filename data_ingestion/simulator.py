@@ -123,8 +123,13 @@ def generate_telemetry(
     services: list[str] | None = None,
     seed: int = 42,
     inject_anomaly: bool = False,
+    drift_factor: float = 0.0,
 ) -> pd.DataFrame:
-    """Generate synthetic microservice telemetry."""
+    """Generate synthetic microservice telemetry.
+
+    drift_factor > 0 shifts all metric means upward by (drift_factor * std),
+    simulating a gradual distribution shift that the KS drift test will detect.
+    """
     if num_samples <= 0:
         return pd.DataFrame(columns=["timestamp", "service", *METRIC_COLUMNS])
 
@@ -155,10 +160,12 @@ def generate_telemetry(
         lat_mean, lat_std = profile["request_latency_ms"]
         err_mean, err_std = profile["error_rate"]
         mem_mean, mem_std = profile["memory_util"]
-        cpu[mask] = rng.normal(cpu_mean, cpu_std, service_samples)
-        latency[mask] = rng.normal(lat_mean, lat_std, service_samples)
-        err[mask] = rng.normal(err_mean, err_std, service_samples)
-        memory[mask] = rng.normal(mem_mean, mem_std, service_samples)
+
+        # Intent: drift_factor shifts the mean by N standard deviations to simulate real distribution drift.
+        cpu[mask]     = rng.normal(cpu_mean     + drift_factor * cpu_std,     cpu_std,     service_samples)
+        latency[mask] = rng.normal(lat_mean     + drift_factor * lat_std,     lat_std,     service_samples)
+        err[mask]     = rng.normal(err_mean     + drift_factor * err_std,     err_std,     service_samples)
+        memory[mask]  = rng.normal(mem_mean     + drift_factor * mem_std,     mem_std,     service_samples)
 
     frame = pd.DataFrame(
         {

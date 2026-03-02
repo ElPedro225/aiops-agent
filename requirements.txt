@@ -18,9 +18,12 @@ matplotlib>=3.7.0
 # Environment & config
 python-dotenv>=1.0.0
 
-# HTTP (for future API / webhook actions)
+# HTTP (notifications + future API / webhook actions)
 requests>=2.31.0
 
-# Optional: LLM reasoning layer
-# anthropic>=0.25.0     # Uncomment to enable Claude API
-# openai>=1.0.0         # Uncomment to enable OpenAI API
+# REST API backend
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+
+# LLM reasoning layer (Claude API)
+anthropic>=0.25.0
