@@ -1,59 +1,63 @@
-# AIOps Agent (Prototype)
+# AIOps Agent
 
-A Python prototype that simulates service telemetry, detects anomalies, monitors data drift, and routes incidents through confidence-based actions (`AUTO`, `CONFIRM`, `ESCALATE`).
+A Python prototype that simulates microservice telemetry, detects anomalies, routes incidents through confidence-based policy tiers (`AUTO`, `CONFIRM`, `ESCALATE`), sends real mobile push notifications, and exposes a live REST API with a browser dashboard.
 
 ## What This Project Does
 
-The agent runs a three-layer flow:
+The agent runs a four-layer pipeline:
 
-1. Data ingestion: generate baseline and current telemetry windows.
-2. Detection and watchdog: compute anomaly scores and run drift/quality checks.
-3. Decision and action: apply policy tiers (`AUTO`, `CONFIRM`, `ESCALATE`) and execute action stubs.
+1. **Data ingestion** — generate baseline and current telemetry windows for `auth`, `payments`, and `orders` services.
+2. **Anomaly detection** — two-stage detector: Z-score (statistical) + Isolation Forest (ML).
+3. **Decision and action** — policy engine assigns `AUTO`, `CONFIRM`, or `ESCALATE` and executes action stubs.
+4. **Notifications and persistence** — push alerts to your phone via ntfy.sh; every event written to SQLite; optional LLM explanation via Claude API.
 
-Outputs include machine-readable artifacts for demos and debugging:
-
-- `data/reference/metrics.csv`
-- `data/current/metrics.csv`
-- `reports/drift_report*.html`
-- `reports/drift_report*.json`
-- `reports/timeline.json`
-
-This project is intentionally safe for demos: remediation methods are stubs and do not call real infrastructure APIs.
+All remediation methods are safe stubs — no real infrastructure calls are made.
 
 ## Architecture
 
-See `ARCHITECTURE.md` for the plain-language architecture and ASCII diagram.
+```
+data_ingestion/simulator.py     →  synthetic telemetry (CSV)
+anomaly_detection/detector.py   →  z-score + IsolationForest scores
+policy_engine/policy.py         →  AUTO / CONFIRM / ESCALATE routing
+actions/remediation.py          →  action stubs (restart, scale, ticket)
+notifications/notifier.py       →  ntfy.sh push alerts (phone)
+storage/db.py                   →  SQLite persistence (stdlib sqlite3)
+llm/claude_reasoner.py          →  Claude API SRE explanation (optional)
+api/server.py                   →  FastAPI REST backend
+ui/dashboard.html               →  vanilla JS live dashboard
+main.py                         →  orchestrator
+```
 
-Core modules:
-
-- `data_ingestion/simulator.py`: synthetic telemetry generation.
-- `anomaly_detection/detector.py`: two-stage anomaly detector (`z-score` + `IForest`).
-- `drift_monitor/evidently_runner.py`: Evidently runner + drift metric extraction.
-- `policy_engine/policy.py`: decision thresholds and policy routing.
-- `actions/remediation.py`: action stubs, human confirmation, escalation behavior.
-- `main.py`: orchestrator and incident timeline writer.
+See `ARCHITECTURE.md` for the full ASCII diagram.
 
 ## Repository Layout
 
 ```text
 aiops-agent/
-|-- actions/
-|-- anomaly_detection/
-|-- data/
-|   |-- current/
-|   `-- reference/
-|-- data_ingestion/
-|-- drift_monitor/
-|-- policy_engine/
-|-- reports/
-|-- ui/
-|   `-- dashboard.html
-|-- .env.example
-|-- .env.demo
-|-- ARCHITECTURE.md
-|-- main.py
-|-- README.md
-`-- requirements.txt
+├── actions/
+├── anomaly_detection/
+├── api/
+│   └── server.py
+├── data/
+│   ├── current/
+│   └── reference/
+├── data_ingestion/
+├── drift_monitor/          # KS-test module (kept for completeness, not used in main pipeline)
+├── llm/
+│   └── claude_reasoner.py
+├── notifications/
+│   └── notifier.py
+├── policy_engine/
+├── reports/                # generated at runtime
+├── storage/
+│   └── db.py
+├── ui/
+│   └── dashboard.html
+├── .env.example
+├── ARCHITECTURE.md
+├── main.py
+├── README.md
+└── requirements.txt
 ```
 
 ## Requirements
@@ -63,127 +67,131 @@ aiops-agent/
 
 ## Setup
 
-1. Create and activate a virtual environment.
-
 ```bash
+# 1. Create and activate a virtual environment
 python -m venv venv
-venv\Scripts\activate
-```
+source venv/bin/activate        # Linux / macOS
+venv\Scripts\activate           # Windows
 
-2. Install dependencies.
+# 2. Install dependencies
+pip install -r requirements.txt
 
-```bash
-python -m pip install -r requirements.txt
-```
-
-3. Create environment config.
-
-```bash
+# 3. Create environment config
 cp .env.example .env
+# Edit .env with your values (see Key Environment Variables below)
 ```
-
-Optional demo presets:
-
-```bash
-cp .env.demo .env
-```
-
-Then keep one scenario block active in `.env`.
 
 ## Run Commands
 
-Run these in order from repo root:
+### Option A — Full stack (recommended)
 
 ```bash
-python -m data_ingestion.simulator
-python -m anomaly_detection.detector
-python -m drift_monitor.evidently_runner
+# Terminal 1: start the FastAPI backend
+uvicorn api.server:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2: run the agent (generates data, detects anomalies, sends notifications)
 python main.py
+
+# Terminal 3: serve the dashboard
+python -m http.server 5500
+# Open: http://localhost:5500/ui/dashboard.html
 ```
 
-What you should see:
+The dashboard auto-detects the API backend on load and auto-refreshes every 30 seconds.
 
-- Simulator prints dataset paths and row counts.
-- Detector prints top anomalies sorted by `anomaly_score`.
-- Drift runner prints `drift_share`, `drifted_columns`, and `share_missing`.
-- Main prints an end-of-run summary and path to `reports/timeline.json`.
-
-## Dashboard (Vanilla HTML)
-
-The dashboard is a single file at `ui/dashboard.html` and fetches:
-
-- `../reports/timeline.json`
-- `../reports/drift_report.json`
-
-Run a local static server from repo root:
+### Option B — Single run without API
 
 ```bash
-python -m http.server
+python main.py
+python -m http.server 5500
+# Open: http://localhost:5500/ui/dashboard.html
 ```
 
-Open:
+Dashboard falls back to reading `reports/timeline.json` directly.
 
-```text
-http://localhost:8000/ui/dashboard.html
+### Continuous loop mode
+
+```bash
+python main.py --loop
+# Runs repeatedly every AGENT_LOOP_INTERVAL_SECONDS (default: 60)
 ```
 
-Dashboard includes:
+## Mobile Push Notifications (ntfy.sh)
 
-- Summary bar (total anomalies and decision counts).
-- Scrollable incident table with color-coded decision badges.
-- Drift status panel (`drift_share`, `drifted_columns`, `share_missing`).
-- Incident detail panel (row click) with animated decision-flow SVG.
-- Plain-English "What happened?" summary for non-technical users.
-- Rule-based "Recommended Actions" cards with priority/category/effort tags.
-- "Confirm Action" component for pending `CONFIRM` incidents:
-  - `Approve & Execute` sets the incident to executed and updates table + summary counts.
-  - `Escalate to Human` converts `CONFIRM -> ESCALATE` and refreshes summary counts.
-  - Panel decisions persist in-session by `timestamp|service` key while the page remains open.
+Get alerts on your phone whenever an anomaly is detected:
 
-## End-to-End Demo Flow
+1. Install the **ntfy** app (Android: free · iOS: $1.99).
+2. Subscribe to a topic of your choice (e.g. `aiops-alerts-yourname`).
+3. Set `NTFY_TOPIC=aiops-alerts-yourname` in `.env`.
+4. Run `python main.py` — notifications arrive within 1–2 seconds.
 
-1. Generate data (`simulator`) and run `main.py` to create `reports/timeline.json`.
-2. Start `python -m http.server` from repo root.
-3. Open `http://localhost:8000/ui/dashboard.html`.
-4. Click an incident row to inspect diagram, summary, and recommendations.
-5. For pending `CONFIRM` incidents, use the confirmation card to approve or escalate.
-6. Observe immediate UI updates to row state and summary counters.
+Notification priority maps to decision tier: `ESCALATE` = urgent · `CONFIRM` = high · `AUTO` = default.
+Set `NTFY_TOPIC=` (blank) to disable notifications entirely.
+
+## Dashboard Features
+
+- **Summary bar** — total anomalies, decision counts, executed ratio.
+- **Incident table** — color-coded `AUTO` / `CONFIRM` / `ESCALATE` badges, executed status.
+- **Incident Detail Diagram** — animated SVG pipeline showing where the incident was routed.
+- **Plain-English explainer** — "What happened / Why / What was done / What to do next."
+- **AI Explanation card** — Claude-generated SRE insight (shown when `ANTHROPIC_API_KEY` is set).
+- **Recommended Actions** — priority/category/effort cards for each decision tier.
+- **Confirm Action panel** — for `CONFIRM` incidents: approve or escalate with one click; table and summary update immediately.
+- **Auto-refresh** — fetches new events every 30 seconds when the API backend is running.
 
 ## Timeline JSON Schema
 
-`reports/timeline.json` contains one entry per processed event with:
+`reports/timeline.json` — one entry per processed event:
 
-- `timestamp`
-- `service`
-- `anomaly_score`
-- `z_score`
-- `decision` (`AUTO`, `CONFIRM`, `ESCALATE`)
-- `action`
-- `executed`
-- `drift_share`
+| Field | Type | Description |
+|---|---|---|
+| `timestamp` | string | ISO-8601 UTC |
+| `service` | string | `auth`, `payments`, or `orders` |
+| `anomaly_score` | float | 0–1, higher = more anomalous |
+| `z_score` | float | standard deviations from baseline mean |
+| `z_anomaly` | bool | true if z-score exceeded threshold |
+| `decision` | string | `AUTO`, `CONFIRM`, or `ESCALATE` |
+| `action` | string | action stub name |
+| `executed` | bool | whether the action ran |
+| `llm_explanation` | string | Claude SRE summary (empty if no API key) |
+| `run_id` | string | UUID identifying the agent run |
 
 ## Key Environment Variables
 
-- Detection:
-  - `Z_SCORE_THRESHOLD`
-  - `ANOMALY_HIGH_THRESHOLD`
-  - `ANOMALY_LOW_THRESHOLD`
-  - `IFOREST_CONTAMINATION` (optional)
-- Drift:
-  - `DRIFT_TOLERANCE`
-  - `DRIFT_CHECK_INTERVAL_MINUTES`
-  - `DRIFT_REPORT_DIR`
-- Simulation:
-  - `SIM_REFERENCE_SAMPLES`
-  - `SIM_CURRENT_SAMPLES`
-  - `SIM_RANDOM_SEED`
-  - `SIM_INJECT_ANOMALY`
-- Actions:
-  - `ENABLE_AUTO_ACTIONS`
-  - `HUMAN_APPROVAL_REQUIRED`
+```ini
+# Anomaly detection
+ANOMALY_HIGH_THRESHOLD=0.75
+ANOMALY_LOW_THRESHOLD=0.40
+Z_SCORE_THRESHOLD=3.0
+
+# Simulation
+SIM_REFERENCE_SAMPLES=500
+SIM_CURRENT_SAMPLES=100
+SIM_RANDOM_SEED=42
+SIM_INJECT_ANOMALY=true
+
+# Actions
+ENABLE_AUTO_ACTIONS=false
+HUMAN_APPROVAL_REQUIRED=true
+
+# Mobile notifications (ntfy.sh)
+NTFY_TOPIC=                     # leave blank to disable
+NTFY_URL=https://ntfy.sh
+NOTIFY_MIN_SCORE=0.40
+NOTIFY_DECISIONS=AUTO,CONFIRM,ESCALATE
+ALERT_COOLDOWN_MINUTES=5        # set 0 to fire every alert (testing)
+
+# Continuous loop
+AGENT_LOOP_INTERVAL_SECONDS=60
+
+# LLM reasoning (optional)
+ANTHROPIC_API_KEY=              # leave blank to skip LLM explanation
+ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+```
 
 ## Notes
 
-- Action methods are safe stubs (no real infrastructure calls).
-- In non-interactive runs, `CONFIRM` paths auto-escalate to ticket creation.
-- Evidently and numerical libraries may emit warnings in some environments; the pipeline still completes.
+- Action methods are safe stubs — no real infrastructure is touched.
+- In non-interactive runs, `CONFIRM` incidents auto-escalate to ticket creation.
+- The `drift_monitor` module uses scipy KS tests (Evidently was incompatible with Python 3.14).
+- SQLite DB is written to `reports/aiops.db`; each run appends rows with a unique `run_id`.
