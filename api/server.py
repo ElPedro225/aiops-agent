@@ -25,6 +25,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
@@ -159,6 +160,36 @@ def _run_agent_background() -> None:
         run_agent()
     finally:
         _agent_running = False
+
+
+class ConfirmPayload(BaseModel):
+    service: str
+    decision: str
+    action: str
+    anomaly_score: float
+    human_action: str  # "approved" or "escalated"
+
+
+@app.post("/confirm")
+def confirm_action(payload: ConfirmPayload) -> dict[str, str]:
+    """Send a push notification when a human approves or escalates a CONFIRM incident from the dashboard.
+
+    Intent: close the feedback loop so the operator's phone reflects decisions made in the UI.
+    """
+    from notifications.notifier import send_anomaly_alert
+
+    # Intent: map human_action back to a decision label ntfy can prioritise correctly.
+    effective_decision = "ESCALATE" if payload.human_action == "escalated" else "AUTO"
+    action_label = f"human-{payload.human_action}"
+
+    send_anomaly_alert(
+        service=payload.service,
+        anomaly_score=payload.anomaly_score,
+        decision=effective_decision,
+        action=action_label,
+        details={"human_action": payload.human_action, "original_decision": payload.decision},
+    )
+    return {"status": "notified", "human_action": payload.human_action}
 
 
 @app.post("/run")

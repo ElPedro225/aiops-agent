@@ -1366,6 +1366,22 @@ Action: ${esc(latestEntry.action || '')}</div>
       renderSummary(timelineState);
       confirmationStateStore[key] = { state: 'approved' };
       incidentDiagramOpenKey = incidentKey(latestEntry);
+
+      // Intent: notify operator's phone that a human approved this incident from the dashboard.
+      if (useApi) {
+        fetch(`${API_BASE}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service: latestEntry.service || 'unknown',
+            decision: latestEntry.decision || 'CONFIRM',
+            action: latestEntry.action || 'unknown',
+            anomaly_score: latestEntry.anomaly_score || 0,
+            human_action: 'approved',
+          }),
+        }).catch(() => {});
+      }
+
       container.innerHTML = `
         ${header}
         <div class="confirm-action-card">
@@ -1393,6 +1409,22 @@ Action: ${esc(latestEntry.action || '')}</div>
 
       confirmationStateStore[key] = { state: 'escalated' };
       incidentDiagramOpenKey = incidentKey(latestEntry);
+
+      // Intent: notify operator's phone that a human escalated this incident from the dashboard.
+      if (useApi) {
+        fetch(`${API_BASE}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service: latestEntry.service || 'unknown',
+            decision: 'ESCALATE',
+            action: latestEntry.action || 'unknown',
+            anomaly_score: latestEntry.anomaly_score || 0,
+            human_action: 'escalated',
+          }),
+        }).catch(() => {});
+      }
+
       container.innerHTML = `
         ${header}
         <div class="confirm-action-card">

@@ -185,6 +185,7 @@ def run_agent() -> int:
         # Intent: prevents notification spam when a service stays anomalous across many rows.
         cooldown_minutes = _env_int("ALERT_COOLDOWN_MINUTES", 5)
         _alert_cooldown: dict[tuple[str, str], pd.Timestamp] = {}
+        _notifications_sent = 0
 
         # --- SQLite persistence ---
         db_conn = init_db(paths["db"])
@@ -241,8 +242,11 @@ def run_agent() -> int:
                         action=action_name,
                         details={col: float(row[col]) for col in METRIC_COLUMNS},
                     )
-                    if sent and pd.notna(row_ts):
-                        _alert_cooldown[cooldown_key] = row_ts
+                    if sent:
+                        _notifications_sent += 1
+                        print(f"  [ntfy] #{_notifications_sent} sent → {service_name} {decision} score={anomaly_score:.3f}")
+                        if pd.notna(row_ts):
+                            _alert_cooldown[cooldown_key] = row_ts
 
             if decision == AUTO:
                 action_outcome = execute_action(
@@ -342,6 +346,7 @@ def run_agent() -> int:
         print(f"decision_counts={decision_counts}")
         print(f"timeline_json={timeline_json_path}")
         print(f"run_id={run_id}")
+        print(f"notifications_sent={_notifications_sent}")
 
         print("\nTop anomalies:")
         print(
