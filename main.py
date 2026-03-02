@@ -221,7 +221,7 @@ def run_agent() -> int:
                 anomaly_score=anomaly_score,
                 decision=decision,
                 metrics={col: float(row[col]) for col in METRIC_COLUMNS},
-                drift_share=drift_share,
+                drift_share=0.0,
             )
 
             # --- Mobile push notification with deduplication ---
