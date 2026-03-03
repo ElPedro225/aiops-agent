@@ -2,6 +2,9 @@
 
 A Python prototype that simulates microservice telemetry, detects anomalies, routes incidents through confidence-based policy tiers (`AUTO`, `CONFIRM`, `ESCALATE`), sends real mobile push notifications, and exposes a live REST API with a browser dashboard.
 
+# AI tools were used for brainstorming, code review, and documentation assistance; final design, implementation decisions, testing, and explanation are my own
+
+
 ## What This Project Does
 
 The agent runs a four-layer pipeline:
