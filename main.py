@@ -3,7 +3,6 @@ File: main.py
 Purpose: Orchestrate ingestion, anomaly detection, policy decisions, action execution, notifications,
          and SQLite persistence end-to-end.
 Layer: Cross-layer orchestration entrypoint in the AIOps architecture.
-Attribution: AI-assisted development was used (Claude + ChatGPT Codex).
 """
 
 from __future__ import annotations
