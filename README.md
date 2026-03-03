@@ -1,7 +1,7 @@
 # AIOps Agent
 
 A Python prototype that simulates microservice telemetry, detects anomalies, routes incidents through confidence-based policy tiers (`AUTO`, `CONFIRM`, `ESCALATE`), sends real mobile push notifications, and exposes a live REST API with a browser dashboard.
-
+# Link to the video : https://youtu.be/aRi1Jj5Dbv0
 # AI tools were used for brainstorming, code review, and documentation assistance; final design, implementation decisions, testing, and explanation are my own
 
 
@@ -127,7 +127,7 @@ python main.py --loop
 
 Get alerts on your phone whenever an anomaly is detected:
 
-1. Install the **ntfy** app (Android: free · iOS: $1.99).
+1. Install the **ntfy** app.
 2. Subscribe to a topic of your choice (e.g. `aiops-alerts-yourname`).
 3. Set `NTFY_TOPIC=aiops-alerts-yourname` in `.env`.
 4. Run `python main.py` — notifications arrive within 1–2 seconds.
